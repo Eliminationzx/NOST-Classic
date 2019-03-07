@@ -34,6 +34,7 @@
 #include "Commands/Nostalrius.h"
 #include "ObjectGuid.h"
 #include "MapNodes/AbstractPlayer.h"
+#include "WorldPacket.h"
 
 #include <map>
 #include <set>
@@ -43,10 +44,8 @@
 #include <unordered_map>
 
 class Object;
-class WorldPacket;
 class WorldSession;
 class Player;
-class Weather;
 class SqlResultQueue;
 class QueryResult;
 class World;
@@ -81,13 +80,12 @@ enum ShutdownExitCode
 enum WorldTimers
 {
     WUPDATE_AUCTIONS    = 0,
-    WUPDATE_WEATHERS    = 1,
-    WUPDATE_UPTIME      = 2,
-    WUPDATE_CORPSES     = 3,
-    WUPDATE_EVENTS      = 4,
-    WUPDATE_SAVE_VAR    = 5,
-    WUPDATE_GROUPS      = 6,
-    WUPDATE_COUNT       = 7
+    WUPDATE_UPTIME      = 1,
+    WUPDATE_CORPSES     = 2,
+    WUPDATE_EVENTS      = 3,
+    WUPDATE_SAVE_VAR    = 4,
+    WUPDATE_GROUPS      = 5,
+    WUPDATE_COUNT       = 6
 };
 
 /// Configuration elements
@@ -120,6 +118,10 @@ enum eConfigUInt32Values
     CONFIG_UINT32_WHISP_DIFF_ZONE_MIN_LEVEL,
     CONFIG_UINT32_CHANNEL_INVITE_MIN_LEVEL,
     CONFIG_UINT32_WORLD_CHAN_MIN_LEVEL,
+    CONFIG_UINT32_WORLD_CHAN_CD,
+    CONFIG_UINT32_WORLD_CHAN_CD_MAX_LEVEL,
+    CONFIG_UINT32_WORLD_CHAN_CD_SCALING,
+    CONFIG_UINT32_WORLD_CHAN_CD_USE_ACCOUNT_MAX_LEVEL,
     CONFIG_UINT32_SAY_EMOTE_MIN_LEVEL,
     CONFIG_UINT32_SAY_MIN_LEVEL,
     CONFIG_UINT32_YELL_MIN_LEVEL,
@@ -129,6 +131,8 @@ enum eConfigUInt32Values
     CONFIG_UINT32_DYN_RESPAWN_PLAYERS_THRESHOLD,
     CONFIG_UINT32_DYN_RESPAWN_PLAYERS_LEVELDIFF,
     CONFIG_UINT32_DYN_RESPAWN_MIN_RESPAWN_TIME,
+    CONFIG_UINT32_DYN_RESPAWN_MIN_RESPAWN_TIME_ELITE,
+    CONFIG_UINT32_DYN_RESPAWN_MIN_RESPAWN_TIME_INDOORS,
     CONFIG_UINT32_DYN_RESPAWN_AFFECT_RESPAWN_TIME_BELOW,
     CONFIG_UINT32_DYN_RESPAWN_AFFECT_LEVEL_BELOW,
     CONFIG_UINT32_MTCELLS_THREADS,
@@ -261,7 +265,10 @@ enum eConfigUInt32Values
     CONFIG_UINT32_RESPEC_MULTIPLICATIVE_COST,
     CONFIG_UINT32_RESPEC_MIN_MULTIPLIER,
     CONFIG_UINT32_RESPEC_MAX_MULTIPLIER,
-    CONFIG_UINT32_UPDATE_STEADY_BUFFER,
+    CONFIG_UINT32_BATTLEGROUND_GROUP_LIMIT,
+    CONFIG_UINT32_CREATURE_SUMMON_LIMIT,
+    CONFIG_UINT32_WAR_EFFORT_AUTOCOMPLETE_PERIOD,
+    CONFIG_UINT32_ACCOUNT_CONCURRENT_AUCTION_LIMIT,
     CONFIG_UINT32_VALUE_COUNT
 };
 
@@ -364,8 +371,6 @@ enum eConfigFloatValues
     CONFIG_FLOAT_RATE_DURABILITY_LOSS_PARRY,
     CONFIG_FLOAT_RATE_DURABILITY_LOSS_ABSORB,
     CONFIG_FLOAT_RATE_DURABILITY_LOSS_BLOCK,
-    CONFIG_FLOAT_SIGHT_GUARDER,
-    CONFIG_FLOAT_SIGHT_MONSTER,
     CONFIG_FLOAT_LISTEN_RANGE_SAY,
     CONFIG_FLOAT_LISTEN_RANGE_YELL,
     CONFIG_FLOAT_LISTEN_RANGE_TEXTEMOTE,
@@ -375,6 +380,7 @@ enum eConfigFloatValues
     CONFIG_FLOAT_THREAT_RADIUS,
     CONFIG_FLOAT_GHOST_RUN_SPEED_WORLD,
     CONFIG_FLOAT_GHOST_RUN_SPEED_BG,
+    CONFIG_FLOAT_RATE_WAR_EFFORT_RESOURCE,
     CONFIG_FLOAT_VALUE_COUNT
 };
 
@@ -457,6 +463,15 @@ enum eConfigBoolValues
     CONFIG_BOOL_ACCURATE_PVP_EQUIP_REQUIREMENTS,
     CONFIG_BOOL_ACCURATE_PVP_PURCHASE_REQUIREMENTS,
     CONFIG_BOOL_ACCURATE_PVP_ZONE_REQUIREMENTS,
+    CONFIG_BOOL_ACCURATE_PVP_TIMELINE,
+    CONFIG_BOOL_ACCURATE_PVP_REWARDS,
+    CONFIG_BOOL_BATTLEGROUND_RANDOMIZE,
+    CONFIG_BOOL_SEND_LOOT_ROLL_UPON_RECONNECT,
+    CONFIG_BOOL_ACCURATE_MOUNTS,
+    CONFIG_BOOL_ACCURATE_PETS,
+    CONFIG_BOOL_ACCURATE_SPELL_EFFECTS,
+    CONFIG_BOOL_ACCURATE_PVE_EVENTS,
+    CONFIG_BOOL_ACCURATE_LFG,
     CONFIG_BOOL_VALUE_COUNT
 };
 
@@ -526,6 +541,16 @@ public:
     virtual void run() = 0;
 };
 
+class SessionPacketSendTask : public AsyncTask
+{
+public:
+    SessionPacketSendTask(uint32 accountId, WorldPacket& data) : m_accountId(accountId), m_data(data) {}
+    void run() override;
+private:
+    uint32 m_accountId;
+    WorldPacket m_data;
+};
+
 struct TransactionPart
 {
     static const int MAX_TRANSACTION_ITEMS = 6;
@@ -538,6 +563,7 @@ struct TransactionPart
     uint32 spell;
     uint16 itemsEntries[MAX_TRANSACTION_ITEMS];
     uint8 itemsCount[MAX_TRANSACTION_ITEMS];
+    uint32 itemsGuid[MAX_TRANSACTION_ITEMS];
 };
 
 struct PlayerTransactionData
@@ -593,11 +619,6 @@ class World
         /// Get the maximum number of parallel sessions on the server since last reboot
         uint32 GetMaxQueuedSessionCount() const { return m_maxQueuedSessionCount; }
         uint32 GetMaxActiveSessionCount() const { return m_maxActiveSessionCount; }
-        Player* FindPlayerInZone(uint32 zone);
-
-        Weather* FindWeather(uint32 id) const;
-        Weather* AddWeather(uint32 zone_id);
-        void RemoveWeather(uint32 zone_id);
 
         /// Get the active session server limit (or security level limitations)
         uint32 GetPlayerAmountLimit() const { return m_playerLimit >= 0 ? m_playerLimit : 0; }
@@ -625,6 +646,7 @@ class World
 
         // Get current server's WoW Patch
         uint8 GetWowPatch() const { return m_wowPatch; }
+        char* const GetPatchName() const;
 
         LocaleConstant GetDefaultDbcLocale() const { return m_defaultDbcLocale; }
 
@@ -716,7 +738,7 @@ class World
         void WarnAccount(uint32 accountId, std::string from, std::string reason, const char* type = "WARNING");
         void BanAccount(uint32 accountId, uint32 duration, std::string reason, std::string author);
         BanReturn BanAccount(BanMode mode, std::string nameOrIP, uint32 duration_secs, std::string reason, std::string author);
-        bool RemoveBanAccount(BanMode mode, std::string nameOrIP);
+        bool RemoveBanAccount(BanMode mode, const std::string& source, const std::string& message, std::string nameOrIP);
 
         // for max speed access
         static float GetMaxVisibleDistanceOnContinents()    { return m_MaxVisibleDistanceOnContinents; }
@@ -729,6 +751,8 @@ class World
 
         static float GetRelocationLowerLimitSq()            { return m_relocation_lower_limit_sq; }
         static uint32 GetRelocationAINotifyDelay()          { return m_relocation_ai_notify_delay; }
+
+        static uint32 GetCreatureSummonCountLimit()         { return m_creatureSummonCountLimit; }
 
         void ProcessCliCommands();
         void QueueCliCommand(CliCommandHolder* commandHolder) { cliCmdQueue.add(commandHolder); }
@@ -751,13 +775,13 @@ class World
         uint32 GetAnticrashRearmTimer() const { return m_anticrashRearmTimer; }
 
         /**
-         * These async tasks should be added from THREADUNSAFE opcode handlers (since AddAsyncTask is *not* threadsafe)
+         * Async tasks, allow safe access to sessions (but not players themselves)
          * The tasks will be executed *while* maps are updated. So don't touch the mobs, pets, etc ...
+         * includes reading, unless the read itself is serialized
          */
-        void AddAsyncTask(AsyncTask* task) { _asyncTasks.push_back(task); }
-        void HandleAsyncTasks(int currThreadIdx, int threadsCount);
-        typedef std::vector<AsyncTask*> AsyncTaskVect;
-        AsyncTaskVect _asyncTasks;
+        void AddAsyncTask(AsyncTask* task) { _asyncTasks.add(task); }
+        bool GetNextAsyncTask(AsyncTask*& task) { return _asyncTasks.next(task); }
+        ACE_Based::LockedQueue<AsyncTask*, ACE_Thread_Mutex> _asyncTasks;
         /**
          * Database logs system
          */
@@ -777,6 +801,23 @@ class World
         };
         uint32 InsertLog(std::string const& message, AccountTypes sec);
         ArchivedLogMessage* GetLog(uint32 logId, AccountTypes my_sec);
+
+        /**
+        * \brief: force all client to request player data
+        * \param: ObjectGuid guid : guid of the specified player
+        * \returns: void
+        *
+        * Description: InvalidatePlayerDataToAllClient force all connected clients to clear specified player cache
+        * FullName: World::InvalidatePlayerDataToAllClient
+        * Access: public
+        **/
+        void InvalidatePlayerDataToAllClient(ObjectGuid guid);
+
+        // Manually override timer update secs to force a faster update
+        void SetWorldUpdateTimer(WorldTimers timer, uint32 current);
+        time_t GetWorldUpdateTimer(WorldTimers timer);
+        time_t GetWorldUpdateTimerInterval(WorldTimers timer);
+
     protected:
         void _UpdateGameTime();
         // callback for UpdateRealmCharacters
@@ -813,8 +854,6 @@ class World
         int32  m_timeZoneOffset;
         IntervalTimer m_timers[WUPDATE_COUNT];
 
-        typedef UNORDERED_MAP<uint32, Weather*> WeatherMap;
-        WeatherMap m_weathers;
         SessionMap m_sessions;
         SessionSet m_disconnectedSessions;
         std::map<uint32 /*accountId*/, time_t /*last logout*/> m_accountsLastLogout;
@@ -850,6 +889,8 @@ class World
 
         static float  m_relocation_lower_limit_sq;
         static uint32 m_relocation_ai_notify_delay;
+
+        static uint32 m_creatureSummonCountLimit;
 
         // CLI command holder to be thread safe
         ACE_Based::LockedQueue<CliCommandHolder*,ACE_Thread_Mutex> cliCmdQueue;

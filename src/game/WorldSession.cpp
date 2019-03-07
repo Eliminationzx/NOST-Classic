@@ -84,7 +84,7 @@ WorldSession::WorldSession(uint32 id, WorldSocket *sock, AccountTypes sec, time_
     m_sessionDbLocaleIndex(sObjectMgr.GetIndexForLocale(locale)), m_latency(0), m_tutorialState(TUTORIALDATA_UNCHANGED), m_warden(nullptr),
     m_bot(nullptr), m_lastReceivedPacketTime(0), _clientOS(CLIENT_OS_UNKNOWN), _gameBuild(0),
     _charactersCount(10), _characterMaxLevel(0), _clientHashComputeStep(HASH_NOT_COMPUTED), m_masterSession(nullptr), m_nodeSession(nullptr),
-    m_masterPlayer(nullptr)
+    m_masterPlayer(nullptr), m_lastPubChannelMsgTime(NULL)
 {
     if (sock)
     {
@@ -291,7 +291,7 @@ void WorldSession::LogUnprocessedTail(WorldPacket *packet)
 
 bool WorldSession::ForcePlayerLogoutDelay()
 {
-    if (!sWorld.IsStopped() && GetPlayer() && (GetPlayer()->IsBeingTeleportedFar() || GetPlayer()->FindMap() && GetPlayer()->IsInWorld()) && sPlayerBotMgr.ForceLogoutDelay())
+    if (!sWorld.IsStopped() && GetPlayer() && GetPlayer()->FindMap() && GetPlayer()->IsInWorld() && sPlayerBotMgr.ForceLogoutDelay())
     {
         sLog.out(LOG_CHAR, "Account: %d (IP: %s) Lost socket for character:[%s] (guid: %u)", GetAccountId(), GetRemoteAddress().c_str(), _player->GetName() , _player->GetGUIDLow());
         sWorld.LogCharacter(GetPlayer(), "LostSocket");
@@ -618,7 +618,7 @@ void WorldSession::SetDisconnectedSession()
 bool WorldSession::UpdateDisconnected(uint32 diff)
 {
     ASSERT(!m_connected);
-    if (!_player || !(_player->IsInWorld()  || !_player->FindMap()) && !_player->IsBeingTeleportedFar())
+    if (!_player || !_player->IsInWorld() || !_player->FindMap())
         return false;
     if (m_disconnectTimer < diff)
         return false; // Delete this session
@@ -678,12 +678,16 @@ void WorldSession::LogoutPlayer(bool Save)
             _player->TeleportToHomebind();
             //this is a bad place to call for far teleport because we need player to be in world for successful logout
             //maybe we should implement delayed far teleport logout?
+            sMapMgr.ExecuteSingleDelayedTeleport(_player);
         }
 
         // FG: finish pending transfers after starting the logout
         // this should fix players being able to logout and login back with full hp at death position
         while (_player->IsBeingTeleportedFar())
+        {
             HandleMoveWorldportAckOpcode();
+            sMapMgr.ExecuteSingleDelayedTeleport(_player); // Execute chain teleport if there are some
+        }
 
         // Refresh apres ca
         inWorld = _player->IsInWorld() && _player->FindMap();
@@ -731,6 +735,8 @@ void WorldSession::LogoutPlayer(bool Save)
                     removedFromMap = _player->TeleportTo(at->target_mapId, at->target_X, at->target_Y, at->target_Z, _player->GetOrientation());
                 else
                     removedFromMap = _player->TeleportToHomebind();
+
+                sMapMgr.ExecuteSingleDelayedTeleport(_player);
             }
         }
 
@@ -753,6 +759,9 @@ void WorldSession::LogoutPlayer(bool Save)
         ///- Send update to group
         if (Group* group = _player->GetGroup())
             group->UpdatePlayerOnlineStatus(_player, false);
+
+        ///- Update cached data at logout
+        sObjectMgr.UpdatePlayerCache(_player);
 
         ///- Remove the player from the world
         // the player may not be in the world when logging out

@@ -747,7 +747,7 @@ enum
     NPC_KOLKAR_INVADER      = 9524,
     NPC_LANTIGAH            = 9990,
 
-    GOSSIP_ITEM_START       = -3090001,
+    GOSSIP_ITEM_START       = 4793,
 
     SAY_BEWARE              = -1780211,
     SAY_DEFENDER_FALLEN     = -1780212,
@@ -759,7 +759,8 @@ enum
     YELL_KOLKAR_STRONGEST   = -1780218,
     YELL_RETREATING         = -1780219,
 
-    QUEST_COUNTERATTACK     = 4021
+    QUEST_COUNTERATTACK     = 4021,
+    GO_KOLKAR_BANNER        = 164690
 };
 struct sSummonInformation
 {
@@ -806,13 +807,22 @@ struct npc_regthar_deathgateAI : public ScriptedAI
         eventPhase = 0;
         deadKolkarCount = 0;
         phaseTimer = 120000;
+
+        ResetVars();
     }
     void Reset()
+    {
+
+    }
+
+    void ResetVars()
     {
         memset(&GuidKolkar, 0x0, sizeof(GuidKolkar));
         memset(&TimerTable, 0x0, sizeof(TimerTable));
         memset(&GuidPhaseOneGuards, 0x0, sizeof(GuidPhaseOneGuards));
         memset(&GuidPhaseTwoGuards, 0x0, sizeof(GuidPhaseTwoGuards));
+        kromzarGUID = ObjectGuid();
+        AllKolkars.clear();
     }
     uint8 eventPhase;//0:nothing, 1: phase1 being the first half.
     //2: phase2 being the second half 3: phase3 being the boss
@@ -824,6 +834,7 @@ struct npc_regthar_deathgateAI : public ScriptedAI
     uint32 TimerTable[12];
     uint64 GuidPhaseOneGuards[9];
     uint64 GuidPhaseTwoGuards[8];
+    ObjectGuid kromzarGUID;
 
     void DoSummonKolkars()
     {
@@ -923,21 +934,23 @@ struct npc_regthar_deathgateAI : public ScriptedAI
         {
             pDefender = NULL;
             if (pDefender = m_creature->GetMap()->GetCreature(GuidPhaseOneGuards[i]))
-                pDefender->AddObjectToRemoveList();
+                static_cast<TemporarySummon*>(pDefender)->UnSummon();
         }
         for (int i = 0; i < 8; i++)
         {
             pDefender = NULL;
             if (pDefender = m_creature->GetMap()->GetCreature(GuidPhaseTwoGuards[i]))
-                pDefender->AddObjectToRemoveList();
+                static_cast<TemporarySummon*>(pDefender)->UnSummon();
         }
         while (!AllKolkars.empty())
         {
             pDefender = NULL;
             if (pDefender = m_creature->GetMap()->GetCreature(AllKolkars.front()))
-                pDefender->AddObjectToRemoveList();
+                static_cast<TemporarySummon*>(pDefender)->UnSummon();
             AllKolkars.pop_front();
         }
+
+        ResetVars();
     }
     void SummonedCreatureJustDied(Creature* pSummoned)
     {
@@ -979,22 +992,28 @@ struct npc_regthar_deathgateAI : public ScriptedAI
                 }
                 SecondPhaseGuards();
 
+                if (phaseTimer < 200000)
+                    phaseTimer = 200000;
                 //summon  NPC_KROMZAR + 2 adds en deaddespawn.
-                if (Creature* kromzar = m_creature->SummonCreature(NPC_KROMZAR, -288.344f, -1852.846f, 92.497f, 4.64f, TEMPSUMMON_TIMED_OR_DEAD_DESPAWN, 60000))
+                if (Creature* kromzar = m_creature->SummonCreature(NPC_KROMZAR, -288.344f, -1852.846f, 92.497f, 4.64f, TEMPSUMMON_TIMED_OR_DEAD_DESPAWN, 120000))
                 {
                     kromzar->JoinCreatureGroup(kromzar, 3, 0, (OPTION_FORMATION_MOVE | OPTION_AGGRO_TOGETHER));
-                    kromzar->SetRespawnDelay(120000);
+                    kromzar->SetRespawnDelay(120);
+                    kromzarGUID = kromzar->GetObjectGuid();
                     for (int i = 0; i < 2; i++)
                     {
-                        if (Creature* c = m_creature->SummonCreature(NPC_KOLKAR_INVADER, -288.344f + i, -1852.846f + i, 92.497f, 4.64f, TEMPSUMMON_TIMED_OR_DEAD_DESPAWN, 60000))
+                        if (Creature* c = m_creature->SummonCreature(NPC_KOLKAR_INVADER, -288.344f + i, -1852.846f + i, 92.497f, 4.64f, TEMPSUMMON_TIMED_OR_DEAD_DESPAWN, 120000))
                         {
                             c->JoinCreatureGroup(kromzar, 3.0f, (3.0f + i) - kromzar->GetOrientation(), (OPTION_FORMATION_MOVE | OPTION_AGGRO_TOGETHER | OPTION_EVADE_TOGETHER));
-                            c->SetRespawnDelay(120000);
+                            c->SetRespawnDelay(120);
                         }
                     }
                     DoScriptText(YELL_KOLKAR_STRONGEST, kromzar);
-                    if (phaseTimer < 200000)
-                        phaseTimer = 200000;
+                }
+                else
+                {
+                    // Couldn't summon Kromzar for some reason, end the event
+                    endEvent();
                 }
             }
         }
@@ -1003,6 +1022,24 @@ struct npc_regthar_deathgateAI : public ScriptedAI
             eventPhase = 4;
             phaseTimer = 30000;
             DoScriptText(YELL_RETREATING, m_creature);
+        }
+    }
+
+    void SummonedCreatureDespawn(Creature *pCreature) override
+    {
+        // Despawn any banners in the vicinity or we end up with a shitload leftover
+        // after the quest has been completed a few times
+        if (pCreature->GetEntry() == NPC_KROMZAR)
+        {
+            std::list<GameObject*> banners;
+
+            GetGameObjectListWithEntryInGrid(banners, pCreature, GO_KOLKAR_BANNER, 15.0f);
+
+            for (auto banner : banners)
+            {
+                if (!banner->isSpawned()) // looted, safe to remove
+                    banner->AddObjectToRemoveList();
+            }
         }
     }
     void UpdateAI(const uint32 uiDiff)
@@ -1180,69 +1217,6 @@ struct npc_kolkar_invaderAI : public ScriptedAI
 CreatureAI* GetAI_npc_kolkar_invader(Creature* pCreature)
 {
     return new npc_kolkar_invaderAI(pCreature);
-}
-struct npc_kolkar_stormseerAI : public ScriptedAI
-{
-    npc_kolkar_stormseerAI(Creature* pCreature) : ScriptedAI(pCreature)
-    {
-        Reset();
-    }
-    void Reset()
-    {
-        // torchTimer=15000;
-        boltTimer = 0;
-        stormTimer = urand(2000, 10000);
-    }
-    // uint32 torchTimer;
-    uint32 boltTimer;
-    uint32 stormTimer;
-    void MovementInform(uint32 movementType, uint32 moveId)
-    {
-        if (movementType != POINT_MOTION_TYPE || moveId != 2)
-            return;
-        // m_creature->CastSpell(x, y, z, SPELL_DESTROY_KARANG_S_BANNER_1, false);
-        // m_creature->CastSpell( m_creature->GetPositionX() + 10*cos( m_creature->GetOrientation()),  m_creature->GetPositionY() + 10*sin( m_creature->GetOrientation()),  m_creature->GetPositionZ(), SPELL_TORCH, false);
-    }
-    void UpdateAI(const uint32 uiDiff)
-    {
-
-        if (!m_creature->SelectHostileTarget() || !m_creature->getVictim())
-        {
-            // if (torchTimer < uiDiff)
-            // {
-            // //if (DoCastSpellIfCan(m_creature, SPELL_TORCH , true) == CAST_OK)
-            // float x,y,z;
-            // m_creature->GetRandomPoint(m_creature->GetPositionX(), m_creature->GetPositionY(), m_creature->GetPositionZ(), 10.0f, x, y, z);
-            // m_creature->GetMotionMaster()->MovePoint(2, x,y,z, MOVE_PATHFINDING);
-            // torchTimer=urand(40000,80000);
-            // }
-            // else
-            // torchTimer -= uiDiff;
-            return;
-        }
-
-        if (boltTimer < uiDiff)
-        {
-            if (DoCastSpellIfCan(m_creature->getVictim(), SPELL_BOLT, false) == CAST_OK)
-                boltTimer = 4000;
-        }
-        else
-            boltTimer -= uiDiff;
-
-        if (stormTimer < uiDiff)
-        {
-            if (DoCastSpellIfCan(m_creature->SelectAttackingTarget(ATTACKING_TARGET_RANDOM, 0), SPELL_STORM, false) == CAST_OK)
-                stormTimer = 20000;
-        }
-        else
-            stormTimer -= uiDiff;
-
-        DoMeleeAttackIfReady();
-    }
-};
-CreatureAI* GetAI_npc_kolkar_stormseer(Creature* pCreature)
-{
-    return new npc_kolkar_stormseerAI(pCreature);
 }
 struct npc_axe_throwerAI : public ScriptedAI
 {
@@ -1528,6 +1502,9 @@ bool ProcessEventId_event_the_principle_source(uint32 eventId, Object* pSource, 
     if (eventId != EVENT_THE_PRINCIPLE_SOURCE)
         return true;
 
+    if (!pSource)
+        return true;
+
     auto pPlayer = pSource->ToPlayer();
 
     if (!pPlayer)
@@ -1613,11 +1590,6 @@ void AddSC_the_barrens()
     newscript = new Script;
     newscript->Name = "npc_kolkar_invader";
     newscript->GetAI = &GetAI_npc_kolkar_invader;
-    newscript->RegisterSelf();
-
-    newscript = new Script;
-    newscript->Name = "npc_kolkar_stormseer";
-    newscript->GetAI = &GetAI_npc_kolkar_stormseer;
     newscript->RegisterSelf();
 
     newscript = new Script;

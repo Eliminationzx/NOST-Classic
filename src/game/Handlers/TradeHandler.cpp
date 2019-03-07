@@ -503,11 +503,9 @@ void WorldSession::HandleAcceptTradeOpcode(WorldPacket& recvPacket)
         delete trader->m_trade;
         trader->m_trade = NULL;
 
-        // desynchronized with the other saves here (SaveInventoryAndGoldToDB() not have own transaction guards)
-        CharacterDatabase.BeginTransaction();
+        // desynchronized with the other saves here, let players save gold per their own serialized transaction
         _player->SaveInventoryAndGoldToDB();
         trader->SaveInventoryAndGoldToDB();
-        CharacterDatabase.CommitTransaction();
 
         trader->GetSession()->SendTradeStatus(TRADE_STATUS_TRADE_COMPLETE);
         SendTradeStatus(TRADE_STATUS_TRADE_COMPLETE);
@@ -702,6 +700,13 @@ void WorldSession::HandleSetTradeItemOpcode(WorldPacket& recvPacket)
     // check cheating, can't fail with correct client operations
     Item* item = _player->GetItemByPos(bag, slot);
     if (!item || (tradeSlot != TRADE_SLOT_NONTRADED && !item->CanBeTraded()))
+    {
+        SendTradeStatus(TRADE_STATUS_TRADE_CANCELED);
+        return;
+    }
+
+    // prevent trading item from bank slot
+    if (_player->IsBankPos(bag, slot)) 
     {
         SendTradeStatus(TRADE_STATUS_TRADE_CANCELED);
         return;

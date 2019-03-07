@@ -96,7 +96,8 @@ enum MangosStrings
     LANG_UNSTUCK_UNAVAILABLE            = 67,
     LANG_UNSTUCK_ALIVE                  = 68,
     LANG_UNSTUCK_DEAD                   = 69,
-    // Room for more level 0              70-99 not used
+    LANG_LEAVE_TO_RESET_INSTANCE        = 70,
+    // Room for more level 0              71-99 not used
 
     // level 1 chat
     LANG_GLOBAL_NOTIFY                  = 100,
@@ -147,8 +148,8 @@ enum MangosStrings
     LANG_YOURS_SWIM_SPEED_CHANGED       = 142,
     LANG_YOU_CHANGE_BACK_SPEED          = 143,
     LANG_YOURS_BACK_SPEED_CHANGED       = 144,
-    //LANG_YOU_CHANGE_FLY_SPEED           = 145,
-    //LANG_YOURS_FLY_SPEED_CHANGED        = 146,
+    LANG_YOU_CHANGE_FLY_SPEED           = 145,
+    LANG_YOURS_FLY_SPEED_CHANGED        = 146,
 
     LANG_YOU_CHANGE_SIZE                = 147,
     LANG_YOURS_SIZE_CHANGED             = 148,
@@ -211,39 +212,39 @@ enum MangosStrings
     LANG_RESETALL_SPELLS                = 218,
     LANG_RESETALL_TALENTS               = 219,
 
-    LANG_WAYPOINT_NOTFOUND              = 220,
-    LANG_WAYPOINT_NOTFOUNDLAST          = 221,
-    LANG_WAYPOINT_NOTFOUNDSEARCH        = 222,
-    LANG_WAYPOINT_NOTFOUNDDBPROBLEM     = 223,
-    LANG_WAYPOINT_CREATSELECTED         = 224,
-    LANG_WAYPOINT_CREATNOTFOUND         = 225,
-    LANG_WAYPOINT_VP_SELECT             = 226,
-    LANG_WAYPOINT_VP_NOTFOUND           = 227,
-    LANG_WAYPOINT_VP_NOTCREATED         = 228,
-    LANG_WAYPOINT_VP_ALLREMOVED         = 229,
-    LANG_WAYPOINT_NOTCREATED            = 230,
-    LANG_WAYPOINT_NOGUID                = 231,
-    LANG_WAYPOINT_NOWAYPOINTGIVEN       = 232,
-    LANG_WAYPOINT_ARGUMENTREQ           = 233,
-    LANG_WAYPOINT_ADDED                 = 234,
-    LANG_WAYPOINT_ADDED_NO              = 235,
-    LANG_WAYPOINT_CHANGED               = 236,
-    LANG_WAYPOINT_CHANGED_NO            = 237,
-    LANG_WAYPOINT_EXPORTED              = 238,
-    LANG_WAYPOINT_NOTHINGTOEXPORT       = 239,
-    LANG_WAYPOINT_IMPORTED              = 240,
-    LANG_WAYPOINT_REMOVED               = 241,
-    LANG_WAYPOINT_NOTREMOVED            = 242,
-    LANG_WAYPOINT_TOOFAR1               = 243,
-    LANG_WAYPOINT_TOOFAR2               = 244,
-    LANG_WAYPOINT_TOOFAR3               = 245,
-    LANG_WAYPOINT_INFO_TITLE            = 246,
-    LANG_WAYPOINT_INFO_WAITTIME         = 247,
-    LANG_WAYPOINT_INFO_MODEL            = 248,
-    LANG_WAYPOINT_INFO_EMOTE            = 249,
-    LANG_WAYPOINT_INFO_SPELL            = 250,
-    LANG_WAYPOINT_INFO_TEXT             = 251,
-    LANG_WAYPOINT_INFO_AISCRIPT         = 252,
+    LANG_WAYPOINT_NOTFOUND              = 220,              // Cannot find waypoint id %u for %s (in path %i, loaded from %s)
+    LANG_WAYPOINT_NOTFOUNDLAST          = 221,              // Last Waypoint not found for %s
+    LANG_WAYPOINT_NOTFOUNDPATH          = 222,              // %s has no path or path empty, path-id %i (loaded from %s)
+    LANG_WAYPOINT_NOTFOUNDDBPROBLEM     = 223,              // Creature (GUID: %u) No waypoints found - This is a MaNGOS db problem (single float).
+    LANG_WAYPOINT_NOTFOUND_NPC          = 224,              // Cannot access %s on map, maybe you are too far away from its spawn location
+    LANG_WAYPOINT_CREATNOTFOUND         = 225,              // Creature (GUID: %u) not found
+    LANG_WAYPOINT_VP_SELECT             = 226,              // You must select a visual waypoint.
+    LANG_WAYPOINT_VP_NOTFOUND           = 227,              // No visual waypoints found
+    LANG_WAYPOINT_VP_NOTCREATED         = 228,              // Could not create visual waypoint with creatureID: %d
+    LANG_WAYPOINT_VP_ALLREMOVED         = 229,              // All visual waypoints removed
+    LANG_WAYPOINT_NOTCREATED            = 230,              // Could not add waypoint %u to %s (pathId %i stored by %s)
+    LANG_WAYPOINT_NOGUID                = 231,              // No GUID provided.
+    LANG_WAYPOINT_NOWAYPOINTGIVEN       = 232,              // No waypoint number provided.
+    LANG_WAYPOINT_ARGUMENTREQ           = 233,              // Argument required for \'%s\'.
+    LANG_WAYPOINT_ADDED                 = 234,              // Added Waypoint %u to %s (PathId %i, path stored by %s)
+    LANG_WAYPOINT_ADDED_NO              = 235,              // UNUSED
+    LANG_WAYPOINT_CHANGED               = 236,              // Waypoint changed.
+    LANG_WAYPOINT_CHANGED_NO            = 237,              // Waypoint %s modified.
+    LANG_WAYPOINT_EXPORTED              = 238,              // WP export successfull.
+    LANG_WAYPOINT_NOTHINGTOEXPORT       = 239,              // No waypoints found inside the database.
+    LANG_WAYPOINT_IMPORTED              = 240,              // File imported.
+    LANG_WAYPOINT_REMOVED               = 241,              // Waypoint removed.
+    LANG_WAYPOINT_NOTREMOVED            = 242,              // UNUSED
+    LANG_WAYPOINT_TOOFAR1               = 243,              // UNUSED
+    LANG_WAYPOINT_TOOFAR2               = 244,              // UNUSED
+    LANG_WAYPOINT_TOOFAR3               = 245,              // UNUSED
+    LANG_WAYPOINT_INFO_TITLE            = 246,              // Waypoint %u for %s (from pathId %i, stored by %s)
+    LANG_WAYPOINT_INFO_WAITTIME         = 247,              // Waittime: %d
+    LANG_WAYPOINT_INFO_ORI              = 248,              // Orientation: %f
+    LANG_WAYPOINT_INFO_SCRIPTID         = 249,              // ScriptId: %u
+    LANG_WAYPOINT_INFO_UNK_SCRIPTID     = 250,              // ScriptID set to non-existing id %u, add it to DBScriptsEngine and reload the table.
+    LANG_WAYPOINT_INFO_TEXT             = 251,              // UNUSED
+    LANG_WAYPOINT_INFO_AISCRIPT         = 252,              // AIScriptName: %s
 
     LANG_RENAME_PLAYER                  = 253,
     LANG_RENAME_PLAYER_GUID             = 254,
@@ -431,6 +432,7 @@ enum MangosStrings
     LANG_COMMAND_LEARN_CLASS_TALENTS    = 431,
     LANG_COMMAND_LEARN_ALL_LANG         = 432,
     LANG_COMMAND_LEARN_ALL_CRAFT        = 433,
+    LANG_COMMAND_LEARN_TAXIS            = 453,
     LANG_COMMAND_COULDNOTFIND           = 434,
     LANG_COMMAND_ITEMIDINVALID          = 435,
     LANG_COMMAND_NOITEMFOUND            = 436,
@@ -450,7 +452,6 @@ enum MangosStrings
     LANG_COMMAND_GRAVEYARDALRLINKED     = 450,
     LANG_COMMAND_GRAVEYARDLINKED        = 451,
     LANG_COMMAND_GRAVEYARDWRONGZONE     = 452,
-    //                                  = 453,
     LANG_COMMAND_GRAVEYARDERROR         = 454,
     LANG_COMMAND_GRAVEYARD_NOTEAM       = 455,
     LANG_COMMAND_GRAVEYARD_ANY          = 456,
@@ -554,12 +555,18 @@ enum MangosStrings
     LANG_NPCINFO_CHAR                   = 539,
     LANG_NPCINFO_LEVEL                  = 540,
     LANG_NPCINFO_HEALTH                 = 541,
+    LANG_NPCINFO_MANA                   = 11017,
     LANG_NPCINFO_FLAGS                  = 542,
     LANG_NPCINFO_LOOT                   = 543,
     LANG_NPCINFO_POSITION               = 544,
     LANG_NPCINFO_VENDOR                 = 545,
     LANG_NPCINFO_TRAINER                = 546,
     LANG_NPCINFO_DUNGEON_ID             = 547,
+    LANG_NPCINFO_ACTIVE_VISIBILITY      = 1030,
+    LANG_NPCINFO_EQUIPMENT              = 1031,
+    LANG_NPCINFO_INHABIT_TYPE           = 1032,
+    LANG_NPCINFO_ARMOR                  = 1033,
+    LANG_NPCINFO_AIINFO                 = 1034,
 
     LANG_PINFO_ACCOUNT                  = 616,
     LANG_PINFO_LEVEL                    = 549,
@@ -648,6 +655,8 @@ enum MangosStrings
     LANG_BG_WS_F_PLACED                 = 613,
     LANG_BG_WS_ALLIANCE_FLAG_RESPAWNED  = 614,
     LANG_BG_WS_HORDE_FLAG_RESPAWNED     = 615,
+    LANG_COMMAND_SOUND_NOT_FOUND        = 617,
+    LANG_COMMAND_SOUND_LIST             = 618,
 
     //LANG_BG_EY_START_ONE_MINUTE       = 636,
     //LANG_BG_EY_START_HALF_MINUTE      = 637,
@@ -697,6 +706,7 @@ enum MangosStrings
     //LANG_BG_EY_DROPPED_FLAG           = 686,
     //LANG_BG_EY_RESETED_FLAG           = 687,
 
+    LANG_RESTORED_ITEM                  = 699,
     //LANG_ARENA_ONE_TOOLOW             = 700,
     //LANG_ARENA_ONE_MINUTE             = 701,
     //LANG_ARENA_THIRTY_SECONDS         = 702,
@@ -898,7 +908,7 @@ enum MangosStrings
     LANG_LOG_FILTERS_STATE_HEADER       = 1027,
     LANG_ALL_LOG_FILTERS_SET_TO_S       = 1028,
     LANG_RA_ONLY_COMMAND                = 1029,
-    // Room for more level 4              1030-1099 not used
+    // Room for more level 4              1035-1099 not used
 
     // Level 3 (continue)
     LANG_ACCOUNT_SETADDON               = 1100,
@@ -977,7 +987,9 @@ enum MangosStrings
     LANG_REMOVE_RIDING_NOT_HAVE         = 1173,
     LANG_REMOVE_RIDING_ERROR            = 1174,
     LANG_REMOVE_RIDING_SUCCESS          = 1175,
-    // Room for more level 3              1176-1199 not used
+    LANG_CREATURE_MODEL_ENTRY           = 1176,
+    LANG_NO_CREATURE_MODEL_ENTRY_FOUND  = 1177,
+    // Room for more level 3              1178-1199 not used
 
     // Debug commands
     LANG_CINEMATIC_NOT_EXIST            = 1200,

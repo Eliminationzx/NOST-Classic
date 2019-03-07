@@ -19,14 +19,17 @@ set (game_SRCS
 	AdvancedPlayerBotAI.h
 	AdvancedPlayerBotAI.cpp
 	AccountMgr.cpp
+	AuraRemovalMgr.cpp
 	AutoBroadCastMgr.cpp
 	Camera.cpp
+	Conditions.cpp
 	CreatureGroups.cpp
 	GameEventMgr.cpp
 	GMTicketMgr.cpp
 	GossipDef.cpp
 	HardcodedEvents.cpp
 	HonorMgr.cpp
+	InstanceStatistics.cpp
 	ItemEnchantmentMgr.cpp
 	LootMgr.cpp
 	ObjectAccessor.cpp
@@ -55,14 +58,15 @@ set (game_SRCS
 	AI/CreatureEventAIMgr.cpp
 	AI/GenericSpellAI.cpp
 	AI/GuardAI.cpp
+	AI/GuardEventAI.cpp
 	AI/NullCreatureAI.cpp
 	AI/PetAI.cpp
+	AI/PetEventAI.cpp
 	AI/PlayerAI.cpp
 	AI/ReactorAI.cpp
 	AI/ScriptedAI.cpp
 	AI/ScriptedEscortAI.cpp
 	AI/ScriptedFollowerAI.cpp
-	AI/ScriptedGuardAI.cpp
 	AI/ScriptedInstance.cpp
 	AI/ScriptedPetAI.cpp
 	AI/TotemAI.cpp
@@ -89,6 +93,7 @@ set (game_SRCS
 	Chat/Channel.cpp
 	Chat/ChannelMgr.cpp
 	Chat/Chat.cpp
+	Chat/AsyncCommandHandlers.cpp
 	CinematicStuff/CinematicStuff.cpp
 	CinematicStuff/CinematicStuff.h
 	Commands/debugcmds.cpp
@@ -102,6 +107,7 @@ set (game_SRCS
 	Database/CharacterDatabaseCleaner.cpp
 	Database/DBCStores.cpp
 	Database/SQLStorages.cpp
+	Group/CreatureLinkingMgr.cpp
 	Group/Group.cpp
 	Group/GroupReference.cpp
 	Guild/Guild.cpp
@@ -118,6 +124,7 @@ set (game_SRCS
 	Handlers/GroupHandler.cpp
 	Handlers/GuildHandler.cpp
 	Handlers/ItemHandler.cpp
+	Handlers/LFGHandler.cpp
 	Handlers/LootHandler.cpp
 	Handlers/MailHandler.cpp
 	Handlers/MiscHandler.cpp
@@ -131,6 +138,7 @@ set (game_SRCS
 	Handlers/SpellHandler.cpp
 	Handlers/TaxiHandler.cpp
 	Handlers/TradeHandler.cpp
+	LFG/LFGMgr.cpp
 	Mail/Mail.cpp
 	Mail/MassMailMgr.cpp
 	MapNodes/AbstractPlayer.cpp
@@ -157,6 +165,7 @@ set (game_SRCS
 	Maps/MapPersistentStateMgr.cpp
 	Maps/MoveMap.cpp
 	Maps/PathFinder.cpp
+	Maps/ScriptCommands.cpp
 	Maps/ZoneScript.cpp
 	Maps/ZoneScriptMgr.cpp
 	Maps/Pool/PoolManager.cpp
@@ -222,8 +231,10 @@ set (game_SRCS
 	vmap/VMapManager2.cpp
 	vmap/WorldModel.cpp
 	AccountMgr.h
+	AuraRemovalMgr.h
 	AutoBroadCastMgr.h
 	Camera.h
+	Conditions.h
 	CreatureGroups.h
 	Formulas.h
 	GameEventMgr.h
@@ -231,6 +242,7 @@ set (game_SRCS
 	GossipDef.h
 	HardcodedEvents.h
 	HonorMgr.h
+	InstanceStatistics.h
 	ItemEnchantmentMgr.h
 	Language.h
 	LootMgr.h
@@ -262,8 +274,10 @@ set (game_SRCS
 	AI/CreatureEventAIMgr.h
 	AI/GameObjectAI.h
 	AI/GuardAI.h
+	AI/GuardEventAI.h
 	AI/NullCreatureAI.h
 	AI/PetAI.h
+	AI/PetEventAI.h
 	AI/PlayerAI.h
 	AI/ReactorAI.h
 	AI/ScriptedAI.h
@@ -271,7 +285,6 @@ set (game_SRCS
 	AI/ScriptedFollowerAI.h
 	AI/ScriptedGameObject.h
 	AI/ScriptedGossip.h
-	AI/ScriptedGuardAI.h
 	AI/ScriptedInstance.h
 	AI/ScriptedPetAI.h
 	AI/TotemAI.h
@@ -288,6 +301,7 @@ set (game_SRCS
 	Chat/Channel.h
 	Chat/ChannelMgr.h
 	Chat/Chat.h
+	Chat/AsyncCommandHandlers.h
 	Commands/Nostalrius.h
 	Database/CharacterDatabaseCache.h
 	Database/CharacterDatabaseCleaner.h
@@ -296,6 +310,7 @@ set (game_SRCS
 	Database/DBCStores.h
 	Database/DBCStructure.h
 	Database/SQLStorages.h
+	Group/CreatureLinkingMgr.h
 	Group/Group.h
 	Group/GroupReference.h
 	Group/GroupRefManager.h
@@ -303,6 +318,8 @@ set (game_SRCS
 	Guild/GuildMgr.h
 	Handlers/AddonHandler.h
 	Handlers/NPCHandler.h
+	Handlers/LFGHandler.h
+	LFG/LFGMgr.h
 	Mail/Mail.h
 	Mail/MassMailMgr.h
 	MapNodes/AbstractPlayer.h
@@ -470,6 +487,7 @@ include_directories(
   ${CMAKE_CURRENT_SOURCE_DIR}/Group
   ${CMAKE_CURRENT_SOURCE_DIR}/Guild
   ${CMAKE_CURRENT_SOURCE_DIR}/Handlers
+  ${CMAKE_CURRENT_SOURCE_DIR}/LFG
   ${CMAKE_CURRENT_SOURCE_DIR}/Mail
   ${CMAKE_CURRENT_SOURCE_DIR}/MapNodes
   ${CMAKE_CURRENT_SOURCE_DIR}/MapNodes/Handlers
@@ -548,6 +566,8 @@ endif()
 add_library(game STATIC
   ${game_SRCS}
 )
+
+SET_TARGET_PROPERTIES (game PROPERTIES FOLDER "Game Libs")
 
 target_link_libraries(game
   shared

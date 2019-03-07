@@ -271,9 +271,11 @@ struct instance_blackwing_lair : public ScriptedInstance
         m_auiData[DATA_NEF_COLOR] = urand(0, 19);
     }
 
-    bool IsEncounterInProgress() const
+    bool IsEncounterInProgress() const override
     {
-        for (int i = 0; i < MAX_ENCOUNTER; i++)
+        // Don't include TYPE_SCEPTER_RUN status in encounter progress check
+        // TODO: Move scepter run out of encounter ordering
+        for (int i = 0; i < TYPE_VAEL_EVENT; i++)
         {
             if (m_auiEncounter[i] == IN_PROGRESS)
                 return true;
@@ -583,6 +585,8 @@ struct instance_blackwing_lair : public ScriptedInstance
                         pCreature->DeleteLater();
                         break;
                     }
+                    if (m_auiEncounter[TYPE_RAZORGORE] != DONE)
+                        pCreature->SetFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_NON_ATTACKABLE);
                     m_lVaelGobs.push_back(pCreature->GetObjectGuid());
                  }
             case MOB_DEMONISTE_AILE_NOIRE:
@@ -649,6 +653,13 @@ struct instance_blackwing_lair : public ScriptedInstance
                 {
                     if (pGo->GetGoState() != GO_STATE_ACTIVE) // Close
                         DoUseDoorOrButton(m_auiData[DATA_DOOR_RAZORGORE_ENTER]);
+                }
+                for (std::list<ObjectGuid>::iterator itr = m_lVaelGobs.begin(); itr != m_lVaelGobs.end(); ++itr)
+                {
+                    if (Creature *pCreature = instance->GetCreature(*itr))
+                    {
+                        pCreature->RemoveFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_NON_ATTACKABLE);
+                    }
                 }
             }
             break;
@@ -747,7 +758,7 @@ struct instance_blackwing_lair : public ScriptedInstance
                         {
                             bYelled = true;
                         }
-                        pCreature->MonsterMoveWithSpeed(-7608.0f, -888.0f, 432.0f, pCreature->GetSpeed(MOVE_RUN), true);
+                        pCreature->MonsterMoveWithSpeed(-7608.0f, -888.0f, 432.0f, 10.0f, pCreature->GetSpeed(MOVE_RUN), uint32(MOVE_PATHFINDING));
                     }
                 }
             }
@@ -986,7 +997,7 @@ struct go_engin_suppressionAI: public GameObjectAI
 
     void ApplyAura()
     {
-        me->SendGameObjectCustomAnim(me->GetObjectGuid());
+        me->SendGameObjectCustomAnim();
         Map::PlayerList const &liste = me->GetMap()->GetPlayers();
         for (Map::PlayerList::const_iterator i = liste.begin(); i != liste.end(); ++i)
         {

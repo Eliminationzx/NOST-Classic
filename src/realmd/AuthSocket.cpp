@@ -35,6 +35,11 @@
 #include "PatchHandler.h"
 #include "Util.h"
 
+#ifdef USE_SENDGRID
+#include "MailerService.h"
+#include "SendgridMail.h"
+#endif
+
 #include <openssl/md5.h>
 #include <ctime>
 //#include "Util.h" -- for commented utf8ToUpperOnlyLatin
@@ -168,7 +173,8 @@ typedef struct AuthHandler
 #define AUTH_TOTAL_COMMANDS sizeof(table)/sizeof(AuthHandler)
 
 /// Constructor - set the N and g values for SRP6
-AuthSocket::AuthSocket() : gridSeed(0), promptPin(false), _accountId(0), _lastRealmListRequest(0)
+AuthSocket::AuthSocket() : gridSeed(0), promptPin(false), _accountId(0), _lastRealmListRequest(0),
+_geoUnlockPIN(0)
 {
     N.SetHexStr("894B645E89E1535BBDAD5B8B290650530801B18EBFBF5E8FAB3C82872A3E9BB7");
     g.SetDword(7);
@@ -297,6 +303,7 @@ void AuthSocket::SendProof(Sha1Hash sha)
 {
     switch(_build)
     {
+        case 5464:                                          // 1.11.2
         case 5875:                                          // 1.12.1
         case 6005:                                          // 1.12.2
         case 6141:                                          // 1.12.3
@@ -403,42 +410,52 @@ bool AuthSocket::_HandleLogonChallenge()
     if (result)
     {
         pkt << (uint8)WOW_FAIL_DB_BUSY;
-        BASIC_LOG("[AuthChallenge] Banned ip %s tries to login!", get_remote_address().c_str());
+        BASIC_LOG("[AuthChallenge] Banned ip '%s' tries to login with account '%s'!", get_remote_address().c_str(), _login.c_str());
         delete result;
     }
     else
     {
         ///- Get the account details from the account table
         // No SQL injection (escaped user name)
-
-        result = LoginDatabase.PQuery("SELECT sha_pass_hash,id,locked,last_ip,v,s,security,email_verif FROM account WHERE username = '%s'",_safelogin.c_str ());
+        result = LoginDatabase.PQuery("SELECT sha_pass_hash,id,locked,last_ip,v,s,security,email_verif,geolock_pin,email,UNIX_TIMESTAMP(joindate) FROM account WHERE username = '%s'",_safelogin.c_str ());
         if (result)
         {
             Field* fields = result->Fetch();
 
-			// Prevent login if the user's email address has not been verified
-			bool requireVerification = sConfig.GetBoolDefault("ReqEmailVerification", false);
-			bool verified = (*result)[7].GetBool();
+            // Prevent login if the user's email address has not been verified
+            bool requireVerification = sConfig.GetBoolDefault("ReqEmailVerification", false);
+            int32 requireEmailSince = sConfig.GetIntDefault("ReqEmailSince", 0);
+            bool verified = (*result)[7].GetBool();
+            
+            // Prevent login if the user's join date is bigger than the timestamp in configuration
+            if (requireEmailSince > 0)
+            {
+                uint32 t = (*result)[10].GetUInt32();
+                requireVerification = requireVerification && (t >= requireEmailSince);
+            }
 
-			if (requireVerification && !verified)
-			{
-				BASIC_LOG("[AuthChallenge] Account's email address requires email verification - rejecting login");
-				pkt << (uint8)WOW_FAIL_UNKNOWN_ACCOUNT;
-				send((char const*)pkt.contents(), pkt.size());
-				return true;
-			}
+            if (requireVerification && !verified)
+            {
+                BASIC_LOG("[AuthChallenge] Account '%s' using IP '%s 'email address requires email verification - rejecting login", _login.c_str(), get_remote_address().c_str());
+                pkt << (uint8)WOW_FAIL_UNKNOWN_ACCOUNT;
+                send((char const*)pkt.contents(), pkt.size());
+                return true;
+            }
 
             ///- If the IP is 'locked', check that the player comes indeed from the correct IP address
             bool locked = false;
             lockFlags = (LockFlag)(*result)[2].GetUInt32();
             securityInfo = (*result)[6].GetCppString();
+            _lastIP = fields[3].GetString();
+            _geoUnlockPIN = fields[8].GetUInt32();
+            _email = fields[9].GetCppString();
 
-            if((lockFlags & IP_LOCK) == IP_LOCK)
+            if (lockFlags & IP_LOCK)
             {
-                const char* last_ip = fields[3].GetString();
-                DEBUG_LOG("[AuthChallenge] Account '%s' is locked to IP - '%s'", _login.c_str(), last_ip);
+                DEBUG_LOG("[AuthChallenge] Account '%s' is locked to IP - '%s'", _login.c_str(), _lastIP.c_str());
                 DEBUG_LOG("[AuthChallenge] Player address is '%s'", get_remote_address().c_str());
-                if (strcmp(last_ip, get_remote_address().c_str()))
+
+                if (_lastIP != get_remote_address())
                 {
                     DEBUG_LOG("[AuthChallenge] Account IP differs");
 
@@ -458,7 +475,7 @@ bool AuthSocket::_HandleLogonChallenge()
                 DEBUG_LOG("[AuthChallenge] Account '%s' is not locked to ip", _login.c_str());
             }
 
-            if (!locked || (locked && ((lockFlags & FIXED_PIN) == FIXED_PIN || (lockFlags & TOTP) == TOTP)))
+            if (!locked || (locked && (lockFlags & FIXED_PIN || lockFlags & TOTP)))
             {
                 uint32 account_id = fields[1].GetUInt32();
                 ///- If the account is banned, reject the logon attempt
@@ -469,12 +486,12 @@ bool AuthSocket::_HandleLogonChallenge()
                     if((*banresult)[0].GetUInt64() == (*banresult)[1].GetUInt64())
                     {
                         pkt << (uint8) WOW_FAIL_BANNED;
-                        BASIC_LOG("[AuthChallenge] Banned account %s tries to login!",_login.c_str ());
+                        BASIC_LOG("[AuthChallenge] Banned account '%s' using IP '%s' tries to login!",_login.c_str (), get_remote_address().c_str());
                     }
                     else
                     {
                         pkt << (uint8) WOW_FAIL_SUSPENDED;
-                        BASIC_LOG("[AuthChallenge] Temporarily banned account %s tries to login!",_login.c_str ());
+                        BASIC_LOG("[AuthChallenge] Temporarily banned account '%s' using IP '%s' tries to login!",_login.c_str (), get_remote_address().c_str());
                     }
 
                     delete banresult;
@@ -523,14 +540,14 @@ bool AuthSocket::_HandleLogonChallenge()
                     // figure out whether we need to display the PIN grid
                     promptPin = locked; // always prompt if the account is IP locked & 2FA is enabled
 
-                    if (!locked && ((lockFlags & ALWAYS_ENFORCE) == ALWAYS_ENFORCE))
+                    if (!locked && ((lockFlags & ALWAYS_ENFORCE) == ALWAYS_ENFORCE) || _geoUnlockPIN)
                     {
                         promptPin = true; // prompt if the lock hasn't been triggered but ALWAYS_ENFORCE is set
                     }
 
                     if (promptPin)
                     {
-                        BASIC_LOG("[AuthChallenge] account %s is using PIN authentication", _login.c_str());
+                        BASIC_LOG("[AuthChallenge] Account '%s' using IP '%s' requires PIN authentication", _login.c_str(), get_remote_address().c_str());
 
                         uint32 gridSeedPkt = gridSeed = static_cast<uint32>(rand32());
                         EndianConvert(gridSeedPkt);
@@ -551,7 +568,7 @@ bool AuthSocket::_HandleLogonChallenge()
                         _localizationName[i] = ch->country[4-i-1];
 
                     LoadAccountSecurityLevels(account_id);
-                    BASIC_LOG("[AuthChallenge] account %s is using '%c%c%c%c' locale (%u)", _login.c_str (), ch->country[3], ch->country[2], ch->country[1], ch->country[0], GetLocaleByName(_localizationName));
+                    BASIC_LOG("[AuthChallenge] Account '%s' using IP '%s' is using '%c%c%c%c' locale (%u)", _login.c_str (), get_remote_address().c_str(), ch->country[3], ch->country[2], ch->country[1], ch->country[0], GetLocaleByName(_localizationName));
 
                     _accountId = account_id;
 
@@ -741,7 +758,7 @@ bool AuthSocket::_HandleLogonProof()
         if ((lockFlags & FIXED_PIN) == FIXED_PIN)
         {
             pinResult = VerifyPinData(std::stoi(securityInfo), pinData);
-            BASIC_LOG("PIN result: %u", pinResult);
+            BASIC_LOG("[AuthChallenge] Account '%s' using IP '%s' PIN result: %u", _login.c_str(), get_remote_address().c_str(), pinResult);
         }
         else if ((lockFlags & TOTP) == TOTP)
         {
@@ -755,7 +772,11 @@ bool AuthSocket::_HandleLogonProof()
                 if ((pinResult = VerifyPinData(pin, pinData)))
                     break;
             }
-        } 
+        }
+        else if (_geoUnlockPIN)
+        {
+            pinResult = VerifyPinData(_geoUnlockPIN, pinData);
+        }
         else
         {
             pinResult = false;
@@ -764,12 +785,69 @@ bool AuthSocket::_HandleLogonProof()
     }
 
     // reject credentials on unexpected build to confuse custom client authors
-    auto const approvedBuild = _platform == X86 && (_os == Win || _os == OSX);
+    auto const approvedBuild = (_platform == X86 || _platform == PPC) && (_os == Win || _os == OSX);
 
     ///- Check if SRP6 results match (password is correct), else send an error
     if (!memcmp(M.AsByteArray().data(), lp.M1, 20) && pinResult && approvedBuild)
     {
-        BASIC_LOG("User '%s' successfully authenticated", _login.c_str());
+        // Geolocking checks must be done after an otherwise successful login to prevent lockout attacks
+        if (_geoUnlockPIN) // remove the PIN to unlock the account since login succeeded
+        {
+            auto result = LoginDatabase.PExecute("UPDATE account SET geolock_pin = 0 WHERE username = '%s'",
+                _safelogin.c_str());
+
+            if (!result)
+            {
+                sLog.outError("Unable to remove geolock PIN for %s - account has not been unlocked", _safelogin.c_str());
+            }
+        }
+        else if (GeographicalLockCheck())
+        {
+            BASIC_LOG("Account '%s' (%u) using IP '%s' has been geolocked", _login.c_str(), _accountId, get_remote_address().c_str()); // todo, add additional logging info
+
+            auto pin = urand(100000, 999999); // check rand32_max
+            auto result = LoginDatabase.PExecute("UPDATE account SET geolock_pin = %u WHERE username = '%s'",
+                pin, _safelogin.c_str());
+
+            if (!result)
+            {
+                sLog.outError("Unable to write geolock PIN for %s - account has not been locked", _safelogin.c_str());
+
+                char data[2] = { CMD_AUTH_LOGON_PROOF, WOW_FAIL_DB_BUSY };
+                send(data, sizeof(data));
+                return true;
+            }
+
+#ifdef USE_SENDGRID
+            if (sConfig.GetBoolDefault("SendMail", false))
+            {
+                auto mail = std::make_unique<SendgridMail>
+                (
+                    sConfig.GetStringDefault("SendGridKey", ""),
+                    sConfig.GetStringDefault("GeolockGUID", "")
+                );
+
+                mail->recipient(_email);
+                mail->from(sConfig.GetStringDefault("MailFrom", ""));
+                mail->substitution("%username%", _login);
+                mail->substitution("%unlock_pin%", std::to_string(pin));
+                mail->substitution("%originating_ip%", get_remote_address());
+
+                MailerService::get_global_mailer()->send(std::move(mail),
+                    [](SendgridMail::Result res)
+                    {
+                        DEBUG_LOG("Mail result: %d", res);
+                    }
+                );
+            }
+#endif
+
+            char data[2] = { CMD_AUTH_LOGON_PROOF, WOW_FAIL_PARENTCONTROL };
+            send(data, sizeof(data));
+            return true;
+        }
+
+        BASIC_LOG("[AuthChallenge] Account '%s' using IP '%s' successfully authenticated", _login.c_str(), get_remote_address().c_str());
 
         ///- Update the sessionkey, last_ip, last login time and reset number of failed logins in the account table for this account
         // No SQL injection (escaped user name) and IP address as received by socket
@@ -803,7 +881,7 @@ bool AuthSocket::_HandleLogonProof()
             char data[2] = { CMD_AUTH_LOGON_PROOF, WOW_FAIL_UNKNOWN_ACCOUNT};
             send(data, sizeof(data));
         }
-        BASIC_LOG("[AuthChallenge] account %s tried to login with wrong password!",_login.c_str ());
+        BASIC_LOG("[AuthChallenge] Account '%s' using IP '%s' tried to login with wrong password!", _login.c_str (), get_remote_address().c_str());
 
         uint32 MaxWrongPassCount = sConfig.GetIntDefault("WrongPass.MaxCount", 0);
         if(MaxWrongPassCount > 0)
@@ -824,10 +902,11 @@ bool AuthSocket::_HandleLogonProof()
                     if(WrongPassBanType)
                     {
                         uint32 acc_id = fields[0].GetUInt32();
-                        LoginDatabase.PExecute("INSERT INTO account_banned VALUES ('%u',UNIX_TIMESTAMP(),UNIX_TIMESTAMP()+'%u','MaNGOS realmd','Failed login autoban',1,1,0)",
+                        LoginDatabase.PExecute("INSERT INTO account_banned (id, bandate, unbandate, bannedby, banreason, active, realm) "
+                            "VALUES ('%u',UNIX_TIMESTAMP(),UNIX_TIMESTAMP()+'%u','MaNGOS realmd','Failed login autoban',1,1)",
                             acc_id, WrongPassBanTime);
-                        BASIC_LOG("[AuthChallenge] account %s got banned for '%u' seconds because it failed to authenticate '%u' times",
-                            _login.c_str(), WrongPassBanTime, failed_logins);
+                        BASIC_LOG("[AuthChallenge] Account '%s' using  IP '%s' got banned for '%u' seconds because it failed to authenticate '%u' times",
+                            _login.c_str(), get_remote_address().c_str(), WrongPassBanTime, failed_logins);
                     }
                     else
                     {
@@ -835,7 +914,7 @@ bool AuthSocket::_HandleLogonProof()
                         LoginDatabase.escape_string(current_ip);
                         LoginDatabase.PExecute("INSERT INTO ip_banned VALUES ('%s',UNIX_TIMESTAMP(),UNIX_TIMESTAMP()+'%u','MaNGOS realmd','Failed login autoban')",
                             current_ip.c_str(), WrongPassBanTime);
-                        BASIC_LOG("[AuthChallenge] IP %s got banned for '%u' seconds because account %s failed to authenticate '%u' times",
+                        BASIC_LOG("[AuthChallenge] IP '%s' got banned for '%u' seconds because account '%s' failed to authenticate '%u' times",
                             current_ip.c_str(), WrongPassBanTime, _login.c_str(), failed_logins);
                     }
                 }
@@ -1008,6 +1087,7 @@ void AuthSocket::LoadRealmlist(ByteBuffer &pkt)
 {
     switch(_build)
     {
+        case 5464:                                          // 1.11.2
         case 5875:                                          // 1.12.1
         case 6005:                                          // 1.12.2
         case 6141:                                          // 1.12.3
@@ -1223,7 +1303,7 @@ bool AuthSocket::VerifyPinData(uint32 pin, const PINData& clientData)
 
     // convert the PIN to bytes (for ex. '1234' to {1, 2, 3, 4})
     std::vector<uint8> pinBytes;
-	    
+
     while (pin != 0)
     {
         pinBytes.push_back(pin % 10);
@@ -1252,7 +1332,7 @@ bool AuthSocket::VerifyPinData(uint32 pin, const PINData& clientData)
     sha.UpdateData(serverSecuritySalt.AsByteArray());
     sha.UpdateData(pinBytes.data(), pinBytes.size());
     sha.Finalize();
-    
+
     BigNumber hash, clientHash;
     hash.SetBinary(sha.GetDigest(), sha.GetLength());
     clientHash.SetBinary(clientData.hash, 20);
@@ -1281,7 +1361,7 @@ uint32 AuthSocket::GenerateTotpPin(const std::string& secret, int interval) {
     uint64 now = static_cast<uint64>(time);
     uint64 step = static_cast<uint64>((floor(now / 30))) + interval;
     EndianConvertReverse(step);
-    
+
     HmacHash hmac(decoded_key.data(), key_size);
     hmac.UpdateData((uint8*)&step, sizeof(step));
     hmac.Finalize();
@@ -1330,4 +1410,79 @@ void AuthSocket::LoadAccountSecurityLevels(uint32 accountId)
     } while (result->NextRow());
 
     delete result;
+}
+
+bool AuthSocket::GeographicalLockCheck()
+{
+    if (!sConfig.GetBoolDefault("GeoLocking"), false)
+    {
+        return false;
+    }
+
+    if (_lastIP.empty() || _lastIP == get_remote_address())
+    {
+        return false;
+    }
+
+    if ((lockFlags & GEO_CITY) == 0 && (lockFlags & GEO_COUNTRY) == 0)
+    {
+        return false;
+    }
+
+    auto result = std::unique_ptr<QueryResult>(LoginDatabase.PQuery(
+        "SELECT INET_ATON('%s') AS ip, network_start_integer, geoname_id, registered_country_geoname_id "
+        "FROM geoip "
+        "WHERE network_last_integer >= INET_ATON('%s') "
+        "ORDER BY network_last_integer ASC LIMIT 1",
+        get_remote_address().c_str(), get_remote_address().c_str())
+        );
+
+    auto result_prev = std::unique_ptr<QueryResult>(LoginDatabase.PQuery(
+        "SELECT INET_ATON('%s') AS ip, network_start_integer, geoname_id, registered_country_geoname_id "
+        "FROM geoip "
+        "WHERE network_last_integer >= INET_ATON('%s') "
+        "ORDER BY network_last_integer ASC LIMIT 1",
+        _lastIP.c_str(), _lastIP.c_str())
+        );
+
+    if (!result && !result_prev)
+    {
+        return false;
+    }
+
+    // If only one of the queries returns a result, assume location has changed
+    if ((result && !result_prev) || (!result && result_prev))
+    {
+        return true;
+    }
+
+    uint32_t net_start = result->Fetch()[1].GetUInt32();
+    uint32_t net_start_prev = result_prev->Fetch()[1].GetUInt32();
+    uint32_t ip = result->Fetch()[0].GetUInt32();
+    uint32_t ip_prev = result_prev->Fetch()[0].GetUInt32();
+
+    /* The optimised query will return the next highest range in the event
+     * of the address not being found in the database. Therefore, we need
+     * to perform a second check to ensure our address falls within
+     * the returned range.
+     * See: https://blog.jcole.us/2007/11/24/on-efficiently-geo-referencing-ips-with-maxmind-geoip-and-mysql-gis/
+     */
+    if (net_start > ip || net_start_prev > ip_prev)
+    {
+        return false;
+    }
+
+    std::string geoname_id = result->Fetch()[2].GetString();
+    std::string country_geoname_id = result->Fetch()[3].GetString();
+    std::string prev_geoname_id = result_prev->Fetch()[2].GetString();
+    std::string prev_country_geoname_id = result_prev->Fetch()[3].GetString();
+
+    if (lockFlags & GEO_CITY)
+    {
+        return geoname_id != prev_geoname_id;
+    }
+    else
+    {
+        return country_geoname_id != prev_country_geoname_id;
+    }
 }

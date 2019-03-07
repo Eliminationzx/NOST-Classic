@@ -110,7 +110,7 @@ public:
 private:
     void do_helper(WorldPacket& data, char const* text)
     {
-        //copyied from BuildMonsterChat
+        //copyied from BuildWorldObjectChat
         data << uint8(CHAT_MSG_MONSTER_YELL);
         data << uint32(i_language);
         data << ObjectGuid(i_source->GetObjectGuid());
@@ -174,7 +174,7 @@ public:
 
         char str [2048];
         snprintf(str, 2048, text, arg1str, arg2str);
-        //copyied from BuildMonsterChat
+        //copyied from BuildWorldObjectChat
         data << uint8(CHAT_MSG_MONSTER_YELL);
         data << uint32(i_language);
         data << ObjectGuid(i_source->GetObjectGuid());
@@ -209,7 +209,7 @@ BattleGround::BattleGround()
     m_Status            = STATUS_NONE;
     m_ClientInstanceID  = 0;
     m_EndTime           = 0;
-    m_BracketId         = BG_BRACKET_ID_TEMPLATE;        // use as mark bg template
+    m_BracketId         = BG_BRACKET_ID_NONE;        // use as mark bg template
     m_InvitedAlliance   = 0;
     m_InvitedHorde      = 0;
     m_Winner            = 2;
@@ -279,7 +279,7 @@ BattleGround::~BattleGround()
         sLog.out(LOG_BG, "[%u,%u]: winner=%u, duration=%s", GetTypeID(), GetInstanceID(), GetWinner(), secsToTimeString(GetStartTime() / 1000, true).c_str());
 
     // Pas un BG 'template'
-    if (GetBracketId() != BG_BRACKET_ID_TEMPLATE)
+    if (GetBracketId() != BG_BRACKET_ID_NONE)
         sBattleGroundMgr.DeleteClientVisibleInstanceId(GetTypeID(), GetBracketId(), GetClientInstanceID());
 
     // unload map
@@ -321,7 +321,7 @@ void BattleGround::Update(uint32 diff)
     /*********************************************************/
 
     // if less then minimum players are in on one side, then start premature finish timer
-    if (GetStatus() == STATUS_IN_PROGRESS && sBattleGroundMgr.GetPrematureFinishTime() && (GetPlayersCountByTeam(ALLIANCE) < GetMinPlayersPerTeam() || GetPlayersCountByTeam(HORDE) < GetMinPlayersPerTeam()))
+    if (GetTypeID() != BATTLEGROUND_AV && GetStatus() == STATUS_IN_PROGRESS && sBattleGroundMgr.GetPrematureFinishTime() && (GetPlayersCountByTeam(ALLIANCE) < GetMinPlayersPerTeam() || GetPlayersCountByTeam(HORDE) < GetMinPlayersPerTeam()))
     {
         if (!m_PrematureCountDown)
         {
@@ -571,7 +571,7 @@ void BattleGround::RewardHonorToTeam(uint32 Honor, Team teamId)
 
 void BattleGround::RewardReputationToTeam(uint32 faction_id, uint32 Reputation, Team teamId)
 {
-    FactionEntry const* factionEntry = sFactionStore.LookupEntry(faction_id);
+    FactionEntry const* factionEntry = sObjectMgr.GetFactionEntry(faction_id);
 
     if (!factionEntry)
         return;
@@ -734,8 +734,15 @@ void BattleGround::EndBattleGround(Team winner)
 
 uint32 BattleGround::GetBonusHonorFromKill(uint32 kills) const
 {
-    //variable kills means how many honorable kills you scored (so we need kills * honor_for_one_kill)
-    return (uint32)MaNGOS::Honor::hk_honor_at_level(GetMaxLevel(), kills);
+    // BHU is determined by the CP that would be awarded to the highest level in the range
+    // if they made an honorable kill on a Rank 1 target
+    return kills * (uint32)MaNGOS::Honor::GetHonorGain(GetMaxLevel(), GetMaxLevel(), 1);
+}
+
+float BattleGround::GetHonorModifier() {
+    // If the game ends in under one hour, less Bonus Honor will be earned from control of mines, graveyards and for the General kill (win).
+    float elapsed = (float)GetStartTime() / IN_MILLISECONDS / HOUR;
+    return elapsed < 1.0f ? pow(60, elapsed - 1) : 1.0f;
 }
 
 uint32 BattleGround::GetBattlemasterEntry() const
@@ -755,33 +762,17 @@ uint32 BattleGround::GetBattlemasterEntry() const
 
 void BattleGround::RewardMark(Player *plr, uint32 count)
 {
-    switch (GetTypeID())
-    {
-        case BATTLEGROUND_AV:
-            if (count == ITEM_WINNER_COUNT)
-                RewardSpellCast(plr, SPELL_AV_MARK_WINNER);
-            else
-                RewardSpellCast(plr, SPELL_AV_MARK_LOSER);
-            break;
-        case BATTLEGROUND_WS:
-            if (count == ITEM_WINNER_COUNT)
-                RewardSpellCast(plr, SPELL_WS_MARK_WINNER);
-            else
-                RewardSpellCast(plr, SPELL_WS_MARK_LOSER);
-            break;
-        case BATTLEGROUND_AB:
-            if (count == ITEM_WINNER_COUNT)
-                RewardSpellCast(plr, SPELL_AB_MARK_WINNER);
-            else
-                RewardSpellCast(plr, SPELL_AB_MARK_LOSER);
-            break;
-        default:
-            break;
-    }
+    if (count == ITEM_WINNER_COUNT)
+        RewardSpellCast(plr, plr->GetTeamId() ? GetHordeWinSpell() : GetAllianceWinSpell());
+    else
+        RewardSpellCast(plr, plr->GetTeamId() ? GetHordeLoseSpell() : GetAllianceLoseSpell());
 }
 
 void BattleGround::RewardSpellCast(Player *plr, uint32 spell_id)
 {
+    if (!spell_id)
+        return;
+
     SpellEntry const *spellInfo = sSpellMgr.GetSpellEntry(spell_id);
     if (!spellInfo)
     {

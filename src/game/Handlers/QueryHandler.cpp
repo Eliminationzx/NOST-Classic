@@ -42,10 +42,16 @@ void WorldSession::SendNameQueryOpcode(Player *p)
         return;
 
     // guess size
-    WorldPacket data(SMSG_NAME_QUERY_RESPONSE, (8 + 1 + 4 + 4 + 4 + 10));
+#if SUPPORTED_CLIENT_BUILD >= CLIENT_BUILD_1_12_1
+    WorldPacket data(SMSG_NAME_QUERY_RESPONSE, (8 + 25 + 1 + 4 + 4 + 4));   // guess size
     data << ObjectGuid(p->GetObjectGuid());
-    data << p->GetName();
-    data << uint8(0);                                       // realm name for cross realm BG usage
+    data << p->GetName();                                   // CString(48): played name
+    data << uint8(0);                                       // CString(256): realm name for cross realm BG usage
+#else
+    WorldPacket data(SMSG_NAME_QUERY_RESPONSE, (8 + 25 + 4 + 4 + 4));   // guess size
+    data << ObjectGuid(p->GetObjectGuid());
+    data << p->GetName();                                   // CString(48): played name
+#endif
     data << uint32(p->getRace());
     data << uint32(p->getGender());
     data << uint32(p->getClass());
@@ -59,13 +65,17 @@ void WorldSession::SendNameQueryOpcodeFromDB(ObjectGuid guid)
     if (PlayerCacheData* pData = sObjectMgr.GetPlayerDataByGUID(guid.GetCounter()))
     {
         std::string name = pData->sName;
-        if (name == "")
-            name         = GetMangosString(LANG_NON_EXIST_CHARACTER);
 
-        WorldPacket data(SMSG_NAME_QUERY_RESPONSE, (8 + 1 + 4 + 4 + 4 + 10));
+#if SUPPORTED_CLIENT_BUILD >= CLIENT_BUILD_1_12_1
+        WorldPacket data(SMSG_NAME_QUERY_RESPONSE, (8 + (name.size() + 1) + 1 + 4 + 4 + 4));
         data << ObjectGuid(HIGHGUID_PLAYER, pData->uiGuid);
         data << name;
         data << uint8(0);
+#else
+        WorldPacket data(SMSG_NAME_QUERY_RESPONSE, (8 + (name.size() + 1) + 4 + 4 + 4));
+        data << ObjectGuid(HIGHGUID_PLAYER, pData->uiGuid);
+        data << name;
+#endif
         data << uint32(pData->uiRace);
         data << uint32(pData->uiGender);
         data << uint32(pData->uiClass);
@@ -99,9 +109,7 @@ void WorldSession::SendNameQueryOpcodeFromDBCallBack(QueryResult *result, uint32
     uint32 lowguid      = fields[0].GetUInt32();
     std::string name = fields[1].GetCppString();
     uint8 pRace = 0, pGender = 0, pClass = 0;
-    if (name == "")
-        name         = session->GetMangosString(LANG_NON_EXIST_CHARACTER);
-    else
+    if (!name.empty())
     {
         pRace        = fields[2].GetUInt8();
         pGender      = fields[3].GetUInt8();
@@ -109,10 +117,16 @@ void WorldSession::SendNameQueryOpcodeFromDBCallBack(QueryResult *result, uint32
     }
 
     // guess size
-    WorldPacket data(SMSG_NAME_QUERY_RESPONSE, (8 + 1 + 4 + 4 + 4 + 10));
+#if SUPPORTED_CLIENT_BUILD >= CLIENT_BUILD_1_12_1
+    WorldPacket data(SMSG_NAME_QUERY_RESPONSE, (8 + (name.size() + 1) + 1 + 4 + 4 + 4));
     data << ObjectGuid(HIGHGUID_PLAYER, lowguid);
     data << name;
     data << uint8(0);                                       // realm name for cross realm BG usage
+#else
+    WorldPacket data(SMSG_NAME_QUERY_RESPONSE, (8 + (name.size() + 1) + 4 + 4 + 4));
+    data << ObjectGuid(HIGHGUID_PLAYER, lowguid);
+    data << name;
+#endif
     data << uint32(pRace);                                  // race
     data << uint32(pGender);                                // gender
     data << uint32(pClass);                                 // class
@@ -238,9 +252,14 @@ void WorldSession::HandleGameObjectQueryOpcode(WorldPacket & recv_data)
         data << uint32(info->type);
         data << uint32(info->displayId);
         data << Name;
-        data << uint16(0) << uint8(0) << uint8(0);           // name2, name3, name4
-        data.append(info->raw.data, 24);
-        //data << float(info->size);                          // go size , to check
+        data << uint8(0) << uint8(0) << uint8(0);   // name2, name3, name4
+#if SUPPORTED_CLIENT_BUILD >= CLIENT_BUILD_1_12_1
+        data << uint8(0);                           // one more name, client handles it a bit differently
+        data.append(info->raw.data, 24);            // these are read as int32
+#else
+        data.append(info->raw.data, 16);            // these are read as int32
+#endif    
+        //data << float(info->size);                // [-ZERO] go size: not in Zero
         SendPacket(&data);
         DEBUG_LOG("WORLD: Sent SMSG_GAMEOBJECT_QUERY_RESPONSE");
     }
@@ -317,7 +336,7 @@ void WorldSession::HandleNpcTextQueryOpcode(WorldPacket & recv_data)
 
     _player->SetTargetGuid(guid);
 
-    GossipText const* pGossip = sObjectMgr.GetGossipText(textID);
+    NpcText const* pGossip = sObjectMgr.GetNpcText(textID);
 
     WorldPacket data(SMSG_NPC_TEXT_UPDATE, 100);            // guess size
     data << textID;
@@ -341,48 +360,48 @@ void WorldSession::HandleNpcTextQueryOpcode(WorldPacket & recv_data)
     else
     {
         std::string Text_0[8], Text_1[8];
-        for (int i = 0; i < 8; ++i)
-        {
-            Text_0[i] = pGossip->Options[i].Text_0;
-            Text_1[i] = pGossip->Options[i].Text_1;
-        }
-
         int loc_idx = GetSessionDbLocaleIndex();
-        if (loc_idx >= 0)
-        {
-            NpcTextLocale const *nl = sObjectMgr.GetNpcTextLocale(textID);
-            if (nl)
-            {
-                for (int i = 0; i < 8; ++i)
-                {
-                    if (nl->Text_0[i].size() > size_t(loc_idx) && !nl->Text_0[i][loc_idx].empty())
-                        Text_0[i] = nl->Text_0[i][loc_idx];
-                    if (nl->Text_1[i].size() > size_t(loc_idx) && !nl->Text_1[i][loc_idx].empty())
-                        Text_1[i] = nl->Text_1[i][loc_idx];
-                }
-            }
-        }
-
         for (int i = 0; i < 8; ++i)
         {
-            data << pGossip->Options[i].Probability;
-
-            if (Text_0[i].empty())
-                data << Text_1[i];
-            else
-                data << Text_0[i];
-
-            if (Text_1[i].empty())
-                data << Text_0[i];
-            else
-                data << Text_1[i];
-
-            data << pGossip->Options[i].Language;
-
-            for (int j = 0; j < 3; ++j)
+            BroadcastText const* bct = sObjectMgr.GetBroadcastTextLocale(pGossip->Options[i].BroadcastTextID);
+            if (bct)
             {
-                data << pGossip->Options[i].Emotes[j]._Delay;
-                data << pGossip->Options[i].Emotes[j]._Emote;
+                Text_0[i] = bct->GetText(loc_idx, GENDER_MALE, true);
+                Text_1[i] = bct->GetText(loc_idx, GENDER_FEMALE, true);
+
+                data << pGossip->Options[i].Probability;
+
+                if (Text_0[i].empty())
+                    data << Text_1[i];
+                else
+                    data << Text_0[i];
+
+                if (Text_1[i].empty())
+                    data << Text_0[i];
+                else
+                    data << Text_1[i];
+
+                data << bct->Language;
+
+                data << bct->EmoteDelay0;
+                data << bct->EmoteId0;
+                data << bct->EmoteDelay1;
+                data << bct->EmoteId1;
+                data << bct->EmoteDelay2;
+                data << bct->EmoteId2;
+            }
+            else
+            {
+                data << float(0);
+                data << "Greetings $N";
+                data << "Greetings $N";
+                data << uint32(0);
+                data << uint32(0);
+                data << uint32(0);
+                data << uint32(0);
+                data << uint32(0);
+                data << uint32(0);
+                data << uint32(0);
             }
         }
     }

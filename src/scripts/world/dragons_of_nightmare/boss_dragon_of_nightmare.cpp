@@ -7,20 +7,24 @@
 #include "boss_dragon_of_nightmare.h"
 #include "HardcodedEvents.h"
 
-uint32 GetDrakeVar(uint32 guid)
+uint32 GetDrakeVar(uint32 entry)
 {
-    switch (guid)
+    switch (entry)
     {
-    case GUID_YSONDRE:  return VAR_PERM_1;
-    case GUID_LETHON:   return VAR_PERM_2;
-    case GUID_EMERISS:  return VAR_PERM_3;
-    default:            return VAR_PERM_4;
+        case NPC_YSONDRE:  return VAR_PERM_1;
+        case NPC_LETHON:   return VAR_PERM_2;
+        case NPC_EMERISS:  return VAR_PERM_3;
+        default:           return VAR_PERM_4; // Taerar
     }
 }
 
 boss_dragon_of_nightmareAI::boss_dragon_of_nightmareAI(Creature* pCreature) : ScriptedAI(pCreature)
 {
     boss_dragon_of_nightmareAI::Reset();
+
+    // The entry changes back to the default when the boss respawns. Re-apply
+    // the current permutation by ensuring the AI is re-initialized on respawn
+    m_creature->SetAInitializeOnRespawn(true);
 }
 
 void boss_dragon_of_nightmareAI::Reset()
@@ -36,7 +40,7 @@ void boss_dragon_of_nightmareAI::Reset()
 
 void boss_dragon_of_nightmareAI::Aggro(Unit* /*pWho*/)
 {
-    DoCastSpellIfCan(m_creature, SPELL_MARK_OF_NATURE, CAST_TRIGGERED | CAST_AURA_NOT_PRESENT);
+    DoCastSpellIfCan(m_creature, SPELL_MARK_OF_NATURE, CF_TRIGGERED | CF_AURA_NOT_PRESENT);
 }
 
 void boss_dragon_of_nightmareAI::EnterEvadeMode()
@@ -49,16 +53,6 @@ void boss_dragon_of_nightmareAI::EnterEvadeMode()
 
 void boss_dragon_of_nightmareAI::JustDied(Unit* pKiller)
 {
-    uint32 varAliveCount = DEF_ALIVE_COUNT;
-    DragonsOfNightmare::CheckSingleVariable(VAR_ALIVE_COUNT, varAliveCount);
-    --varAliveCount;
-    sObjectMgr.SetSavedVariable(VAR_ALIVE_COUNT, varAliveCount, true);
-
-    if (varAliveCount) return;
-
-    sObjectMgr.SetSavedVariable(VAR_REQ_UPDATE, DEF_STOP_DELAY, true);
-    sObjectMgr.SetSavedVariable(VAR_RESP_TIME, time(nullptr) + urand(4 * 24 * 3600, 7 * 24 * 3600), true);
-
     ScriptedAI::JustDied(pKiller);
 }
 
@@ -91,7 +85,7 @@ void boss_dragon_of_nightmareAI::UpdateAI(const uint32 uiDiff)
 
         if (m_uiSummonPlayerTimer > 6000)
         {
-            if (DoCastSpellIfCan(pTarget, SPELL_SUMMON_PLAYER, CAST_TRIGGERED) == CAST_OK)
+            if (DoCastSpellIfCan(pTarget, SPELL_SUMMON_PLAYER, CF_TRIGGERED) == CAST_OK)
                 m_uiSummonPlayerTimer = 0;
         }
     }
@@ -100,8 +94,8 @@ void boss_dragon_of_nightmareAI::UpdateAI(const uint32 uiDiff)
 
     if (m_uiSeepingFogTimer <= uiDiff)
     {
-        DoCastSpellIfCan(m_creature, SPELL_SEEPING_FOG_RIGHT, CAST_TRIGGERED);
-        DoCastSpellIfCan(m_creature, SPELL_SEEPING_FOG_LEFT, CAST_TRIGGERED);
+        DoCastSpellIfCan(m_creature, SPELL_SEEPING_FOG_RIGHT, CF_TRIGGERED);
+        DoCastSpellIfCan(m_creature, SPELL_SEEPING_FOG_LEFT, CF_TRIGGERED);
 
         m_uiSeepingFogTimer = 2 * MINUTE*IN_MILLISECONDS + 300;
     }
@@ -151,7 +145,7 @@ struct npc_dream_fogAI : ScriptedPetAI
 
     void ResetCreature() override
     {
-        DoCastSpellIfCan(m_creature, SPELL_DREAM_FOG_AURA, CAST_TRIGGERED | CAST_AURA_NOT_PRESENT);
+        DoCastSpellIfCan(m_creature, SPELL_DREAM_FOG_AURA, CF_TRIGGERED | CF_AURA_NOT_PRESENT);
     }
 
     void AttackedBy(Unit*) override {}
@@ -241,7 +235,7 @@ GameObjectAI* GetAI_go_putrid_shroom(GameObject* pGo)
 
 CreatureAI* GetAI_boss_dragon_of_nightmare(Creature* pCreature)
 {
-    auto permVar = GetDrakeVar(pCreature->GetObjectGuid().GetCounter());
+    auto permVar = GetDrakeVar(pCreature->GetEntry());
     auto permEntry = sObjectMgr.GetSavedVariable(permVar, 0);
 
     if (permEntry && permEntry != pCreature->GetEntry())

@@ -366,7 +366,7 @@ struct boss_chromaggusAI : public ScriptedAI
                 if (Player* pPlayer = m_creature->GetMap()->GetPlayer(*it))
                 {
                     // Cast affliction
-                    if (DoCastSpellIfCan(pPlayer, m_uiSpellAfflict, CAST_TRIGGERED) == CAST_OK)
+                    if (DoCastSpellIfCan(pPlayer, m_uiSpellAfflict, CF_TRIGGERED) == CAST_OK)
                     {
                         if (m_uiSpellAfflict == SPELL_BROODAF_RED)
                             m_lRedAfflictionPlayerGUID.push_back(pPlayer->GetObjectGuid());
@@ -450,8 +450,8 @@ struct boss_chromaggusAI : public ScriptedAI
         // Enrage if not already enraged and below 20%
         if (!m_bEnraged && m_creature->GetHealthPercent() < 20.0f)
         {
-            DoCastSpellIfCan(m_creature, SPELL_ENRAGE);
-            m_bEnraged = true;
+            if (DoCastSpellIfCan(m_creature, SPELL_ENRAGE) == CAST_OK)
+                m_bEnraged = true;
         }
 
         DoMeleeAttackIfReady();

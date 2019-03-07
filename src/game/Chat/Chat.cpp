@@ -155,14 +155,22 @@ ChatCommand * ChatHandler::getCommandTable()
         { MSTR, nullptr,       0,                  false, nullptr,                                           "", nullptr }
     };
 
+    static ChatCommand characterDeletedListCommandTable[] =
+    {
+        { NODE, "account",         SEC_ADMINISTRATOR, true, &ChatHandler::HandleCharacterDeletedListAccountCommand, "", nullptr },
+        { NODE, "name",            SEC_ADMINISTRATOR, true, &ChatHandler::HandleCharacterDeletedListNameCommand, "", nullptr },
+        { MSTR, nullptr,       0,                  false, nullptr,                                           "", nullptr }
+    };
+
     static ChatCommand characterDeletedCommandTable[] =
     {
         { NODE, "delete",         SEC_CONSOLE,        true,  &ChatHandler::HandleCharacterDeletedDeleteCommand, "", nullptr },
-        { NODE, "list",           SEC_ADMINISTRATOR,  true,  &ChatHandler::HandleCharacterDeletedListCommand, "", nullptr },
+        { NODE, "list",           SEC_ADMINISTRATOR,  true, nullptr                                         , "", characterDeletedListCommandTable },
         { NODE, "restore",        SEC_ADMINISTRATOR,  true,  &ChatHandler::HandleCharacterDeletedRestoreCommand, "", nullptr },
         { NODE, "old",            SEC_CONSOLE,        true,  &ChatHandler::HandleCharacterDeletedOldCommand, "", nullptr },
         { MSTR, nullptr,       0,                  false, nullptr,                                           "", nullptr }
     };
+
 
     static ChatCommand characterCleanCommandTable[] =
     {
@@ -192,6 +200,7 @@ ChatCommand * ChatHandler::getCommandTable()
     {
         { NODE, "cinematic",      SEC_MODERATOR,      false, &ChatHandler::HandleDebugPlayCinematicCommand,       "", nullptr },
         { NODE, "sound",          SEC_MODERATOR,      false, &ChatHandler::HandleDebugPlaySoundCommand,           "", nullptr },
+        { NODE, "text",           SEC_MODERATOR,      false, &ChatHandler::HandleDebugPlayScriptText,             "", nullptr },
         { NODE, "music",          SEC_MODERATOR,      false, &ChatHandler::HandleDebugPlayMusicCommand,           "", nullptr },
         { MSTR, nullptr,       0,                  false, nullptr,                                                "", nullptr }
     };
@@ -219,6 +228,7 @@ ChatCommand * ChatHandler::getCommandTable()
         { NODE, "chanvisual",     SEC_GAMEMASTER,     true,  &ChatHandler::HandleSendSpellChannelVisualCommand,   "", nullptr },
         { NODE, "chanvisualnext", SEC_GAMEMASTER,     true,  &ChatHandler::HandleDebugSendNextChannelSpellVisualCommand, "", nullptr },
         { NODE, "impact",         SEC_GAMEMASTER,     true,  &ChatHandler::HandleSendSpellImpactCommand,          "", nullptr },
+        { NODE, "openbag",        SEC_GAMEMASTER,     false, &ChatHandler::HandleDebugSendOpenBagCommand,         "", nullptr },
         { MSTR, nullptr,       0,                  false, nullptr,                                                "", nullptr }
     };
 
@@ -226,6 +236,7 @@ ChatCommand * ChatHandler::getCommandTable()
     {
         { NODE, "anim",           SEC_GAMEMASTER,     false, &ChatHandler::HandleDebugAnimCommand,                "", nullptr },
         { NODE, "bg",             SEC_ADMINISTRATOR,  true,  &ChatHandler::HandleDebugBattlegroundCommand,        "", nullptr },
+        { NODE, "condition",      SEC_ADMINISTRATOR,  false, &ChatHandler::HandleDebugConditionCommand,           "", nullptr },
         { NODE, "getitemstate",   SEC_ADMINISTRATOR,  false, &ChatHandler::HandleDebugGetItemStateCommand,        "", nullptr },
         { NODE, "lrecipient",     SEC_GAMEMASTER,     false, &ChatHandler::HandleDebugGetLootRecipientCommand,    "", nullptr },
         { NODE, "getitemvalue",   SEC_ADMINISTRATOR,  false, &ChatHandler::HandleDebugGetItemValueCommand,        "", nullptr },
@@ -259,6 +270,7 @@ ChatCommand * ChatHandler::getCommandTable()
         { NODE, "movemotion",     SEC_ADMINISTRATOR,  false, &ChatHandler::HandleDebugMoveCommand,                "", nullptr },
         { NODE, "factionchange_items", SEC_ADMINISTRATOR, true, &ChatHandler::HandleFactionChangeItemsCommand,    "", nullptr },
         { NODE, "loottable",      SEC_ADMINISTRATOR,  true,  &ChatHandler::HandleDebugLootTableCommand,           "", nullptr },
+        { NODE, "utf8overflow", SEC_ADMINISTRATOR,    true, &ChatHandler::HandleDebugOverflowCommand, "", nullptr },
         { MSTR, nullptr,       0,                  false, nullptr,                                                "", nullptr }
     };
 
@@ -334,6 +346,7 @@ ChatCommand * ChatHandler::getCommandTable()
         { NODE, "invite",         SEC_GAMEMASTER,     true,  &ChatHandler::HandleGuildInviteCommand,         "", nullptr },
         { NODE, "uninvite",       SEC_GAMEMASTER,     true,  &ChatHandler::HandleGuildUninviteCommand,       "", nullptr },
         { NODE, "rank",           SEC_GAMEMASTER,     true,  &ChatHandler::HandleGuildRankCommand,           "", nullptr },
+        { NODE, "rename",         SEC_ADMINISTRATOR,  true,  &ChatHandler::HandleGuildRenameCommand,         "", nullptr },
         { MSTR, nullptr,       0,                  false, nullptr,                                           "", nullptr }
     };
 
@@ -371,6 +384,7 @@ ChatCommand * ChatHandler::getCommandTable()
         { NODE, "all_myclass",    SEC_ADMINISTRATOR,  false, &ChatHandler::HandleLearnAllMyClassCommand,     "", nullptr },
         { NODE, "all_myspells",   SEC_ADMINISTRATOR,  false, &ChatHandler::HandleLearnAllMySpellsCommand,    "", nullptr },
         { NODE, "all_mytalents",  SEC_ADMINISTRATOR,  false, &ChatHandler::HandleLearnAllMyTalentsCommand,   "", nullptr },
+        { NODE, "all_mytaxis",    SEC_ADMINISTRATOR,  false, &ChatHandler::HandleLearnAllMyTaxisCommand,     "", nullptr },
         { NODE, "all_recipes",    SEC_GAMEMASTER,     false, &ChatHandler::HandleLearnAllRecipesCommand,     "", nullptr },
         { NODE, "",               SEC_ADMINISTRATOR,  false, &ChatHandler::HandleLearnCommand,               "", nullptr },
         { MSTR, nullptr,       0,                  false, nullptr,                                           "", nullptr }
@@ -388,20 +402,22 @@ ChatCommand * ChatHandler::getCommandTable()
 
     static ChatCommand lookupAccountCommandTable[] =
     {
-        { NODE, "email",          SEC_GAMEMASTER,     true,  &ChatHandler::HandleLookupAccountEmailCommand,     "", nullptr },
-        { NODE, "ip",             SEC_GAMEMASTER,     true,  &ChatHandler::HandleLookupAccountIpCommand,        "", nullptr },
-        { NODE, "iponline",       SEC_GAMEMASTER,     true,  &ChatHandler::HandleLookupAccountIponlineCommand,  "", nullptr },
-        { NODE, "name",           SEC_GAMEMASTER,     true,  &ChatHandler::HandleLookupAccountNameCommand,      "", nullptr },
+        { NODE, "email",          SEC_GAMEMASTER,     false,  &ChatHandler::HandleLookupAccountEmailCommand,     "", nullptr },
+        { NODE, "ip",             SEC_GAMEMASTER,     false,  &ChatHandler::HandleLookupAccountIpCommand,        "", nullptr },
+        { NODE, "iponline",       SEC_GAMEMASTER,     false,  &ChatHandler::HandleLookupAccountIponlineCommand,  "", nullptr },
+        { NODE, "name",           SEC_GAMEMASTER,     false,  &ChatHandler::HandleLookupAccountNameCommand,      "", nullptr },
         { MSTR, nullptr,          0,                  false, nullptr,                                           "", nullptr }
     };
 
+    // TODO: Add console output support to async player lookups
     static ChatCommand lookupPlayerCommandTable[] =
     {
-        { NODE, "account",        SEC_GAMEMASTER,     true,  &ChatHandler::HandleLookupPlayerAccountCommand, "", nullptr },
-        { NODE, "email",          SEC_GAMEMASTER,     true,  &ChatHandler::HandleLookupPlayerEmailCommand,   "", nullptr },
-        { NODE, "ip",             SEC_GAMEMASTER,     true,  &ChatHandler::HandleLookupPlayerIpCommand,      "", nullptr },
-        { NODE, "name",           SEC_GAMEMASTER,     true,  &ChatHandler::HandleLookupPlayerNameCommand,    "", nullptr },
-        { MSTR, nullptr,       0,                  false, nullptr,                                           "", nullptr }
+        { NODE, "account",        SEC_GAMEMASTER,     false,  &ChatHandler::HandleLookupPlayerAccountCommand,   "", nullptr },
+        { NODE, "email",          SEC_GAMEMASTER,     false,  &ChatHandler::HandleLookupPlayerEmailCommand,     "", nullptr },
+        { NODE, "ip",             SEC_GAMEMASTER,     false,  &ChatHandler::HandleLookupPlayerIpCommand,        "", nullptr },
+        { NODE, "name",           SEC_GAMEMASTER,     false,  &ChatHandler::HandleLookupPlayerNameCommand,      "", nullptr },
+        { NODE, "character",      SEC_GAMEMASTER,     false,  &ChatHandler::HandleLookupPlayerCharacterCommand, "", nullptr },
+        { MSTR, nullptr,       0,                  false, nullptr,                                             "", nullptr }
     };
 
     static ChatCommand lookupCommandTable[] =
@@ -409,6 +425,7 @@ ChatCommand * ChatHandler::getCommandTable()
         { NODE, "account",        SEC_GAMEMASTER,     true, nullptr,                                           "", lookupAccountCommandTable },
         { NODE, "area",           SEC_MODERATOR,      true,  &ChatHandler::HandleLookupAreaCommand,          "", nullptr },
         { NODE, "creature",       SEC_ADMINISTRATOR,  true,  &ChatHandler::HandleLookupCreatureCommand,      "", nullptr },
+        { NODE, "creaturemodel",  SEC_ADMINISTRATOR,  true,  &ChatHandler::HandleLookupCreatureModelCommand, "", nullptr },
         { NODE, "event",          SEC_GAMEMASTER,     true,  &ChatHandler::HandleLookupEventCommand,         "", nullptr },
         { NODE, "faction",        SEC_ADMINISTRATOR,  true,  &ChatHandler::HandleLookupFactionCommand,       "", nullptr },
         { NODE, "item",           SEC_ADMINISTRATOR,  true,  &ChatHandler::HandleLookupItemCommand,          "", nullptr },
@@ -419,8 +436,10 @@ ChatCommand * ChatHandler::getCommandTable()
         { NODE, "pool",           SEC_GAMEMASTER,     true,  &ChatHandler::HandleLookupPoolCommand,          "", nullptr },
         { NODE, "skill",          SEC_ADMINISTRATOR,  true,  &ChatHandler::HandleLookupSkillCommand,         "", nullptr },
         { NODE, "spell",          SEC_ADMINISTRATOR,  true,  &ChatHandler::HandleLookupSpellCommand,         "", nullptr },
+        { NODE, "sound",          SEC_MODERATOR,      true,  &ChatHandler::HandleLookupSoundCommand,         "", nullptr },
         { NODE, "taxinode",       SEC_ADMINISTRATOR,  true,  &ChatHandler::HandleLookupTaxiNodeCommand,      "", nullptr },
         { NODE, "tele",           SEC_MODERATOR,      true,  &ChatHandler::HandleLookupTeleCommand,          "", nullptr },
+        { NODE, "guild",          SEC_MODERATOR,      true,  &ChatHandler::HandleLookupGuildCommand,         "", nullptr },
         { MSTR, nullptr,       0,                  false, nullptr,                                           "", nullptr }
     };
 
@@ -435,6 +454,7 @@ ChatCommand * ChatHandler::getCommandTable()
         { NODE, "swim",           SEC_MODERATOR,      false, &ChatHandler::HandleModifySwimCommand,          "", nullptr },
         { NODE, "scale",          SEC_MODERATOR,      false, &ChatHandler::HandleModifyScaleCommand,         "", nullptr },
         { NODE, "bwalk",          SEC_MODERATOR,      false, &ChatHandler::HandleModifyBWalkCommand,         "", nullptr },
+        { NODE, "fly",            SEC_MODERATOR,      false, &ChatHandler::HandleModifyFlyCommand,           "", nullptr },
         { NODE, "aspeed",         SEC_MODERATOR,      false, &ChatHandler::HandleModifyASpeedCommand,        "", nullptr },
         { NODE, "faction",        SEC_MODERATOR,      false, &ChatHandler::HandleModifyFactionCommand,       "", nullptr },
         { NODE, "tp",             SEC_MODERATOR,      false, &ChatHandler::HandleModifyTalentCommand,        "", nullptr },
@@ -470,15 +490,17 @@ ChatCommand * ChatHandler::getCommandTable()
         { NODE, "block",          SEC_GAMEMASTER,     false, &ChatHandler::HandleModifyBlockCommand,         "", nullptr },
         { NODE, "dodge",          SEC_GAMEMASTER,     false, &ChatHandler::HandleModifyDodgeCommand,         "", nullptr },
         { NODE, "parry",          SEC_GAMEMASTER,     false, &ChatHandler::HandleModifyParryCommand,         "", nullptr },
-        { NODE, "cr",             SEC_ADMINISTRATOR,  false, &ChatHandler::HandleModifyCrCommand,            "", nullptr },
-        { NODE, "br",             SEC_ADMINISTRATOR,  false, &ChatHandler::HandleModifyBrCommand,            "", nullptr },
+        { NODE, "combreach",      SEC_ADMINISTRATOR,  false, &ChatHandler::HandleModifyCrCommand,            "", nullptr },
+        { NODE, "boundrad",       SEC_ADMINISTRATOR,  false, &ChatHandler::HandleModifyBrCommand,            "", nullptr },
         { MSTR, nullptr,       0,                     false, nullptr,                       "", nullptr }
     };
 
     static ChatCommand creatureGroupsCommandTable[] =
     {
         { NODE, "add",            SEC_MODERATOR,      false, &ChatHandler::HandleNpcGroupAddCommand,         "", nullptr },
+        { NODE, "addrel",         SEC_MODERATOR,      false, &ChatHandler::HandleNpcGroupAddRelCommand,      "", nullptr },
         { NODE, "del",            SEC_MODERATOR,      false, &ChatHandler::HandleNpcGroupDelCommand,         "", nullptr },
+        { NODE, "link",           SEC_MODERATOR,      false, &ChatHandler::HandleNpcGroupLinkCommand,        "", nullptr },
         { MSTR, nullptr,       0,                  false, nullptr,                                           "", nullptr }
     };
 
@@ -486,7 +508,6 @@ ChatCommand * ChatHandler::getCommandTable()
     {
         { NODE, "add",            SEC_GAMEMASTER,     false, &ChatHandler::HandleNpcAddCommand,              "", nullptr },
         { NODE, "additem",        SEC_GAMEMASTER,     false, &ChatHandler::HandleNpcAddVendorItemCommand,    "", nullptr },
-        { NODE, "addmove",        SEC_GAMEMASTER,     false, &ChatHandler::HandleNpcAddMoveCommand,          "", nullptr },
         { NODE, "aiinfo",         SEC_GAMEMASTER,     false, &ChatHandler::HandleNpcAIInfoCommand,           "", nullptr },
         { NODE, "allowmove",      SEC_ADMINISTRATOR,  false, &ChatHandler::HandleNpcAllowMovementCommand,    "", nullptr },
         { NODE, "changeentry",    SEC_ADMINISTRATOR,  false, &ChatHandler::HandleNpcChangeEntryCommand,      "", nullptr },
@@ -567,7 +588,6 @@ ChatCommand * ChatHandler::getCommandTable()
     {
         { MSTR, "all",            SEC_ADMINISTRATOR,  true,  &ChatHandler::HandleReloadAllCommand,           "", nullptr },
         { MSTR, "all_area",       SEC_ADMINISTRATOR,  true,  &ChatHandler::HandleReloadAllAreaCommand,       "", nullptr },
-        { MSTR, "all_eventai",    SEC_ADMINISTRATOR,  true,  &ChatHandler::HandleReloadAllEventAICommand,    "", nullptr },
         { MSTR, "all_gossips",    SEC_ADMINISTRATOR,  true,  &ChatHandler::HandleReloadAllGossipsCommand,    "", nullptr },
         { MSTR, "all_item",       SEC_ADMINISTRATOR,  true,  &ChatHandler::HandleReloadAllItemCommand,       "", nullptr },
         { MSTR, "all_locales",    SEC_ADMINISTRATOR,  true,  &ChatHandler::HandleReloadAllLocalesCommand,    "", nullptr },
@@ -587,19 +607,19 @@ ChatCommand * ChatHandler::getCommandTable()
         { MSTR, "command",                     SEC_ADMINISTRATOR, true,  &ChatHandler::HandleReloadCommandCommand,                 "", nullptr },
         { MSTR, "conditions",                  SEC_ADMINISTRATOR, true,  &ChatHandler::HandleReloadConditionsCommand,              "", nullptr },
         { MSTR, "creature",                    SEC_ADMINISTRATOR, true,  &ChatHandler::HandleReloadCreatureCommand,  "", nullptr },
-        { MSTR, "creature_ai_scripts",         SEC_ADMINISTRATOR, true,  &ChatHandler::HandleReloadEventAIScriptsCommand,          "", nullptr },
-        { MSTR, "creature_ai_summons",         SEC_ADMINISTRATOR, true,  &ChatHandler::HandleReloadEventAISummonsCommand,          "", nullptr },
-        { MSTR, "creature_ai_texts",           SEC_ADMINISTRATOR, true,  &ChatHandler::HandleReloadEventAITextsCommand,            "", nullptr },
+        { MSTR, "creature_ai_events",          SEC_ADMINISTRATOR, true,  &ChatHandler::HandleReloadEventAIEventsCommand,           "", nullptr },
         { MSTR, "creature_battleground",       SEC_ADMINISTRATOR, true,  &ChatHandler::HandleReloadBattleEventCommand,             "", nullptr },
         { MSTR, "creature_involvedrelation",   SEC_ADMINISTRATOR, true,  &ChatHandler::HandleReloadCreatureQuestInvRelationsCommand, "", nullptr },
         { MSTR, "creature_loot_template",      SEC_ADMINISTRATOR, true,  &ChatHandler::HandleReloadLootTemplatesCreatureCommand,   "", nullptr },
         { MSTR, "creature_questrelation",      SEC_ADMINISTRATOR, true,  &ChatHandler::HandleReloadCreatureQuestRelationsCommand,  "", nullptr },
-        { MSTR, "db_script_string",            SEC_ADMINISTRATOR, true,  &ChatHandler::HandleReloadDbScriptStringCommand,          "", nullptr },
+        { MSTR, "creature_spells",             SEC_ADMINISTRATOR, true,  &ChatHandler::HandleReloadCreatureSpellsCommand,          "", nullptr },
+        { MSTR, "creature_spells_scripts",     SEC_ADMINISTRATOR, true,  &ChatHandler::HandleReloadCreatureSpellScriptsCommand,    "", nullptr },
         { MSTR, "disenchant_loot_template",    SEC_ADMINISTRATOR, true,  &ChatHandler::HandleReloadLootTemplatesDisenchantCommand, "", nullptr },
         { MSTR, "event_scripts",               SEC_ADMINISTRATOR, true,  &ChatHandler::HandleReloadEventScriptsCommand,            "", nullptr },
         { MSTR, "fishing_loot_template",       SEC_ADMINISTRATOR, true,  &ChatHandler::HandleReloadLootTemplatesFishingCommand,    "", nullptr },
         { MSTR, "game_graveyard_zone",         SEC_ADMINISTRATOR, true,  &ChatHandler::HandleReloadGameGraveyardZoneCommand,       "", nullptr },
         { MSTR, "game_tele",                   SEC_ADMINISTRATOR, true,  &ChatHandler::HandleReloadGameTeleCommand,                "", nullptr },
+        { MSTR, "taxi_path_transitions",       SEC_ADMINISTRATOR, true,  &ChatHandler::HandleReloadTaxiPathTransitionsCommand,     "", nullptr },
         { MSTR, "gameobject",                  SEC_ADMINISTRATOR, true,  &ChatHandler::HandleReloadGameObjectCommand,              "", nullptr },
         { MSTR, "gameobject_involvedrelation", SEC_ADMINISTRATOR, true,  &ChatHandler::HandleReloadGOQuestInvRelationsCommand,     "", nullptr },
         { MSTR, "gameobject_loot_template",    SEC_ADMINISTRATOR, true,  &ChatHandler::HandleReloadLootTemplatesGameobjectCommand, "", nullptr },
@@ -617,7 +637,6 @@ ChatCommand * ChatHandler::getCommandTable()
         { MSTR, "locales_gameobject",          SEC_ADMINISTRATOR, true,  &ChatHandler::HandleReloadLocalesGameobjectCommand,       "", nullptr },
         { MSTR, "locales_gossip_menu_option",  SEC_ADMINISTRATOR, true,  &ChatHandler::HandleReloadLocalesGossipMenuOptionCommand, "", nullptr },
         { MSTR, "locales_item",                SEC_ADMINISTRATOR, true,  &ChatHandler::HandleReloadLocalesItemCommand,             "", nullptr },
-        { MSTR, "locales_npc_text",            SEC_ADMINISTRATOR, true,  &ChatHandler::HandleReloadLocalesNpcTextCommand,          "", nullptr },
         { MSTR, "locales_page_text",           SEC_ADMINISTRATOR, true,  &ChatHandler::HandleReloadLocalesPageTextCommand,         "", nullptr },
         { MSTR, "locales_points_of_interest",  SEC_ADMINISTRATOR, true,  &ChatHandler::HandleReloadLocalesPointsOfInterestCommand, "", nullptr },
         { MSTR, "locales_quest",               SEC_ADMINISTRATOR, true,  &ChatHandler::HandleReloadLocalesQuestCommand,            "", nullptr },
@@ -634,6 +653,7 @@ ChatCommand * ChatHandler::getCommandTable()
         { MSTR, "quest_start_scripts",         SEC_ADMINISTRATOR, true,  &ChatHandler::HandleReloadQuestStartScriptsCommand,       "", nullptr },
         { MSTR, "quest_template",              SEC_ADMINISTRATOR, true,  &ChatHandler::HandleReloadQuestTemplateCommand,           "", nullptr },
         { MSTR, "quest_greeting",              SEC_ADMINISTRATOR, true,  &ChatHandler::HandleReloadQuestGreetingCommand,           "", nullptr },
+        { MSTR, "trainer_greeting",            SEC_ADMINISTRATOR, true,  &ChatHandler::HandleReloadTrainerGreetingCommand,         "", nullptr },
         { MSTR, "reference_loot_template",     SEC_ADMINISTRATOR, true,  &ChatHandler::HandleReloadLootTemplatesReferenceCommand,  "", nullptr },
         { MSTR, "reserved_name",               SEC_ADMINISTRATOR, true,  &ChatHandler::HandleReloadReservedNameCommand,            "", nullptr },
         { MSTR, "reputation_reward_rate",      SEC_ADMINISTRATOR, true,  &ChatHandler::HandleReloadReputationRewardRateCommand,    "", nullptr },
@@ -679,9 +699,10 @@ ChatCommand * ChatHandler::getCommandTable()
         { MSTR, "player_factionchange_quests", SEC_ADMINISTRATOR, true,  &ChatHandler::HandleReloadFactionChangeQuests,            "", nullptr },
         { MSTR, "player_factionchange_mounts", SEC_ADMINISTRATOR, true,  &ChatHandler::HandleReloadFactionChangeMounts,            "", nullptr },
         { MSTR, "creature_model_info",         SEC_ADMINISTRATOR, true,  &ChatHandler::HandleReloadCreatureModelInfo,              "", nullptr },
-        { MSTR, "nostalrius_string",           SEC_ADMINISTRATOR, true,  &ChatHandler::HandleReloadNostalriusStrings,              "", nullptr },
         { MSTR, "ip_banned",                   SEC_ADMINISTRATOR, true,  &ChatHandler::HandleReloadIPBanList,                      "", nullptr },
         { MSTR, "account_banned",              SEC_ADMINISTRATOR, true,  &ChatHandler::HandleReloadAccountBanList,                 "", nullptr },
+        { MSTR, "instance_buff_removal",       SEC_ADMINISTRATOR, true,  &ChatHandler::HandleReloadInstanceBuffRemoval,            "", nullptr },
+        { MSTR, "petitions",                   SEC_ADMINISTRATOR, true,  &ChatHandler::HandleReloadPetitions,                      "", nullptr },
         { MSTR, nullptr,                    0,                 false, nullptr,                                                     "", nullptr }
     };
 
@@ -804,15 +825,7 @@ ChatCommand * ChatHandler::getCommandTable()
         { NODE, "add",            SEC_GAMEMASTER,     false, &ChatHandler::HandleWpAddCommand,               "", nullptr },
         { NODE, "modify",         SEC_GAMEMASTER,     false, &ChatHandler::HandleWpModifyCommand,            "", nullptr },
         { NODE, "export",         SEC_ADMINISTRATOR,  false, &ChatHandler::HandleWpExportCommand,            "", nullptr },
-        { NODE, "import",         SEC_ADMINISTRATOR,  false, &ChatHandler::HandleWpImportCommand,            "", nullptr },
         { MSTR, nullptr,       0,                  false, nullptr,                                           "", nullptr }
-    };
-
-    static ChatCommand exportCommandTable[] =
-    {
-        { NODE, "spell",            SEC_CONSOLE,        true, &ChatHandler::HandleDbcExportSpellCommand,      "", nullptr},
-        { NODE, "effects",          SEC_CONSOLE,        true, &ChatHandler::HandleDbcExportSpellEffectsCommand, "", nullptr},
-        { MSTR, nullptr,         0,                    false, nullptr,                                               "", nullptr}
     };
 
     static ChatCommand worldCommandTable[] =
@@ -837,6 +850,8 @@ ChatCommand * ChatHandler::getCommandTable()
         { NODE, "addwp",             SEC_ADMINISTRATOR,        false, &ChatHandler::HandleEscortAddWpCommand,      "", nullptr},
         { NODE, "modwp",             SEC_ADMINISTRATOR,        false, &ChatHandler::HandleEscortModifyWpCommand,   "", nullptr},
         { NODE, "clearwp",           SEC_ADMINISTRATOR,        false, &ChatHandler::HandleEscortClearWpCommand,    "", nullptr},
+        { NODE, "showwp",            SEC_ADMINISTRATOR,        false, &ChatHandler::HandleEscortShowWpCommand,     "", nullptr},
+        { NODE, "hidewp",            SEC_ADMINISTRATOR,        false, &ChatHandler::HandleEscortHideWpCommand,     "", nullptr},
         { MSTR, nullptr,          0,                        false, nullptr,                                        "", nullptr}
     };
     static ChatCommand worldStateCommandTable[] =
@@ -958,7 +973,7 @@ ChatCommand * ChatHandler::getCommandTable()
         { NODE, "",              SEC_GAMEMASTER,      true, &ChatHandler::HandleGMTicketGetByIdOrNameCommand,     "", nullptr },
         { MSTR, nullptr,      0,                   false,nullptr,                                                 "", nullptr }
     };
-    
+
     static ChatCommand serviceCommandTable[] =
     {
         { NODE, "del_characters",     SEC_ADMINISTRATOR,    true,  &ChatHandler::HandleServiceDeleteCharacters,   "", nullptr },
@@ -973,9 +988,18 @@ ChatCommand * ChatHandler::getCommandTable()
         { MSTR, nullptr,              0,                    false, nullptr,                                       "", nullptr }
     };
 
+    static ChatCommand AntiSpamCommandTable[] =
+    {
+        { MSTR, "add",                SEC_GAMEMASTER,       true,  &ChatHandler::HandleAntiSpamAdd,                "", nullptr },
+        { MSTR, "remove",             SEC_ADMINISTRATOR,    true,  &ChatHandler::HandleAntiSpamRemove,             "", nullptr },
+        { MSTR, "replace",            SEC_GAMEMASTER,       true,  &ChatHandler::HandleAntiSpamReplace,            "", nullptr },
+        { MSTR, "removereplace",      SEC_ADMINISTRATOR,    true,  &ChatHandler::HandleAntiSpamRemoveReplace,      "", nullptr },
+        { MSTR, nullptr,              0,                    false, nullptr,                                        "", nullptr }
+    };
+
     static ChatCommand goldCommandTable[] =
     {
-        { MSTR, "remove",            SEC_GAMEMASTER,        true,  &ChatHandler::HandleGoldRemoval,               "", nullptr },
+        { MSTR, "remove",            SEC_GAMEMASTER,        false, &ChatHandler::HandleGoldRemoval,               "", nullptr },
         { MSTR, nullptr,              0,                    false, nullptr,                                       "", nullptr }
     };
 
@@ -1010,7 +1034,6 @@ ChatCommand * ChatHandler::getCommandTable()
         { NODE, "wp",             SEC_GAMEMASTER,     false, nullptr,                                           "", wpCommandTable       },
         { NODE, "service",        SEC_ADMINISTRATOR,  true, nullptr,                                           "", serviceCommandTable  },
 
-        { NODE, "export",         SEC_CONSOLE,        true, nullptr,               "Export DBC files to database", exportCommandTable},
         { NODE, "bot",            SEC_GAMEMASTER,     true, nullptr,                                "Manage bots", botCommandTable},
         { NODE, "ahbot",          SEC_GAMEMASTER,     true, nullptr,                              "Manage AH bot", ahbotCommandTable},
         { NODE, "world",          SEC_GAMEMASTER,     false, nullptr,                                           "", worldCommandTable },
@@ -1033,6 +1056,7 @@ ChatCommand * ChatHandler::getCommandTable()
         { NODE, "commands",       SEC_PLAYER,         true,  &ChatHandler::HandleCommandsCommand,            "", nullptr },
         { NODE, "demorph",        SEC_GAMEMASTER,     false, &ChatHandler::HandleDeMorphCommand,             "", nullptr },
         { NODE, "die",            SEC_ADMINISTRATOR,  false, &ChatHandler::HandleDieCommand,                 "", nullptr },
+        { NODE, "faceme",         SEC_MODERATOR,      false, &ChatHandler::HandleFacemeCommand,              "", nullptr },
         { NODE, "fear",           SEC_GAMEMASTER,     false, &ChatHandler::HandleFearCommand,                "", nullptr },
         { NODE, "revive",         SEC_ADMINISTRATOR,  true,  &ChatHandler::HandleReviveCommand,              "", nullptr },
         { NODE, "dismount",       SEC_PLAYER,         false, &ChatHandler::HandleDismountCommand,            "", nullptr },
@@ -1044,6 +1068,7 @@ ChatCommand * ChatHandler::getCommandTable()
         { NODE, "unlearn",        SEC_ADMINISTRATOR,  false, &ChatHandler::HandleUnLearnCommand,             "", nullptr },
         { NODE, "removeriding",   SEC_ADMINISTRATOR,  false, &ChatHandler::HandleRemoveRidingCommand,        "", nullptr },
         { NODE, "distance",       SEC_ADMINISTRATOR,  false, &ChatHandler::HandleGetDistanceCommand,         "", nullptr },
+        { NODE, "angle",          SEC_ADMINISTRATOR,  false, &ChatHandler::HandleGetAngleCommand,            "", nullptr },
         { NODE, "recall",         SEC_MODERATOR,      false, &ChatHandler::HandleRecallCommand,              "", nullptr },
         { NODE, "save",           SEC_PLAYER,         false, &ChatHandler::HandleSaveCommand,                "", nullptr },
         { MSTR, "wareffortget",   SEC_ADMINISTRATOR,  true,  &ChatHandler::HandleGetWarEffortResource,       "", nullptr },
@@ -1074,7 +1099,7 @@ ChatCommand * ChatHandler::getCommandTable()
         { NODE, "setskill",       SEC_ADMINISTRATOR,  false, &ChatHandler::HandleSetSkillCommand,            "", nullptr },
         { MSTR, "whispers",       SEC_MODERATOR,      false, &ChatHandler::HandleWhispersCommand,            "", nullptr },
         { MSTR, "wr",             SEC_PLAYER,         false, &ChatHandler::HandleWhisperRestrictionCommand,  "", nullptr },
-        { MSTR, "pinfo",          SEC_GAMEMASTER,     true,  &ChatHandler::HandlePInfoCommand,               "", nullptr },
+        { MSTR, "pinfo",          SEC_GAMEMASTER,     false, &ChatHandler::HandlePInfoCommand,               "", nullptr },
         { MSTR, "groupinfo",      SEC_GAMEMASTER,     true,  &ChatHandler::HandleGroupInfoCommand,           "", nullptr },
         { MSTR, "pbcast",         SEC_ADMINISTRATOR,  true,  &ChatHandler::HandlePBCastStatsCommand,         "", pbcastCommandTable },
         { NODE, "addons",         SEC_ADMINISTRATOR,  false, &ChatHandler::HandleListAddonsCommand,          "", nullptr },
@@ -1101,6 +1126,7 @@ ChatCommand * ChatHandler::getCommandTable()
         { MSTR, "runtest",        SEC_ADMINISTRATOR,  true,  &ChatHandler::HandleRunTestCommand,             "", nullptr },
         { MSTR, "log",            SEC_GAMEMASTER,     true,  &ChatHandler::HandleViewLogCommand,             "", nullptr },
         { MSTR, "spamer",         SEC_GAMEMASTER,     true, nullptr,                                           "", spamerCommandTable },
+        { MSTR, "antispam",       SEC_GAMEMASTER,     true, nullptr,                                           "", AntiSpamCommandTable },
         { MSTR, "gold",           SEC_GAMEMASTER,     true, nullptr,                                           "", goldCommandTable },
         { MSTR, nullptr,       0,                  false, nullptr,                                           "", nullptr }
     };
@@ -1569,6 +1595,26 @@ void ChatHandler::ExecuteCommand(const char* text)
                 }
             }
             SetSentErrorMessage(false);
+
+            // Always log GM commands, regardless of success
+            if (command->SecurityLevel > SEC_PLAYER)
+            {
+                // chat case
+                if (m_session && m_session->GetPlayer())
+                {
+                    Player* p = m_session->GetPlayer();
+                    ObjectGuid sel_guid = p->GetSelectionGuid();
+                    sLog.outCommand(GetAccountId(), "Command: %s [Player: %s (Group Leader \"%s\", Account: %u) X: %f Y: %f Z: %f Map: %u Selected: %s]",
+                        realCommandFull.c_str(), p->GetName(), p->GetGroup() ? p->GetGroup()->GetLeaderGuid().GetString().c_str() : "NULL", GetAccountId(), p->GetPositionX(), p->GetPositionY(), p->GetPositionZ(), p->GetMapId(),
+                        sel_guid.GetString().c_str());
+                }
+                else                                        // 0 account -> console
+                {
+                    sLog.outCommand(GetAccountId(), "Command: %s [Account: %u from %s]",
+                        realCommandFull.c_str(), GetAccountId(), GetAccountId() ? "RA-connection" : "Console");
+                }
+            }
+
             if ((this->*(command->Handler))((char*)text))   // text content destroyed at call
             {
                 if (m_session && command->Flags & COMMAND_FLAGS_CRITICAL)
@@ -1577,23 +1623,6 @@ void ChatHandler::ExecuteCommand(const char* text)
                         sLog.out(LOG_GM_CRITICAL, "%s: %s. Selected %s. Map %u", m_session->GetUsername().c_str(), realCommandFull.c_str(), target->GetObjectGuid().GetString().c_str(), target->GetMapId());
                     else
                         sLog.out(LOG_GM_CRITICAL, "%s: %s.", m_session->GetUsername().c_str(), realCommandFull.c_str());
-                }
-                if (command->SecurityLevel > SEC_PLAYER)
-                {
-                    // chat case
-                    if (m_session && m_session->GetPlayer())
-                    {
-                        Player* p = m_session->GetPlayer();
-                        ObjectGuid sel_guid = p->GetSelectionGuid();
-                        sLog.outCommand(GetAccountId(), "Command: %s [Player: %s (Group Leader \"%s\", Account: %u) X: %f Y: %f Z: %f Map: %u Selected: %s]",
-                                realCommandFull.c_str(), p->GetName(), p->GetGroup() ? p->GetGroup()->GetLeaderGuid().GetString().c_str() : "NULL", GetAccountId(), p->GetPositionX(), p->GetPositionY(), p->GetPositionZ(), p->GetMapId(),
-                                        sel_guid.GetString().c_str());
-                    }
-                    else                                        // 0 account -> console
-                    {
-                        sLog.outCommand(GetAccountId(), "Command: %s [Account: %u from %s]",
-                                realCommandFull.c_str(), GetAccountId(), GetAccountId() ? "RA-connection" : "Console");
-                    }
                 }
             }
             // some commands have custom error messages. Don't send the default one in these cases.
@@ -1859,18 +1888,15 @@ bool ChatHandler::isValidChatMessage(const char* message)
     uint32 color = 0;
 
     ItemPrototype const* linkedItem = nullptr;
-    Quest const* linkedQuest = nullptr;
-    SpellEntry const *linkedSpell = nullptr;
-    ItemRandomPropertiesEntry const* itemProperty = nullptr;
+    const SpellEntry* linkedSpell = nullptr;
+
+    std::list<int> properties;
 
     while (!reader.eof())
     {
         if (validSequence == validSequenceIterator)
         {
             linkedItem = nullptr;
-            linkedQuest = nullptr;
-            linkedSpell = nullptr;
-            itemProperty = nullptr;
 
             reader.ignore(255, '|');
         }
@@ -1976,144 +2002,48 @@ bool ChatHandler::isValidChatMessage(const char* message)
                     }
 
                     // the itementry is followed by several integers which describe an instance of this item
-
-                    // position relative after itemEntry
-                    const uint8 randomPropertyPosition = 6;
-
-                    int32 propertyId = 0;
+                    int32 propertyId = 0, propCount = 0;
                     bool negativeNumber = false;
-                    char c;
-                    for (uint8 i = 0; i < randomPropertyPosition; ++i)
+                    char c = 0;
+                    while (reader.peek() != '|' && !reader.eof() && propCount < 3)
                     {
-                        propertyId = 0;
-                        negativeNumber = false;
-                        while ((c = reader.get()) != ':')
-                        {
-                            if (c >= '0' && c <= '9')
-                            {
-                                propertyId *= 10;
-                                propertyId += c - '0';
-                            }
-                            else if (c == '-')
-                                negativeNumber = true;
-                            else
-                                return false;
-                        }
-                    }
-                    if (negativeNumber)
-                        propertyId *= -1;
+                        c = reader.get();
 
-                    if (propertyId > 0)
-                    {
-                        itemProperty = sItemRandomPropertiesStore.LookupEntry(propertyId);
-                        if (!itemProperty)
+                        // Reset at the property switch
+                        if (c == ':')
+                        {
+                            if (negativeNumber)
+                                propertyId *= -1;
+
+                            ++propCount;
+                            // Only check if it's a non-zero prop
+                            if (propertyId > 0)
+                                properties.push_back(propertyId);
+
+                            propertyId = 0;
+                            negativeNumber = false;
+
+                            continue;
+                        }
+
+                        if (c >= '0' && c <= '9')
+                        {
+                            propertyId *= 10;
+                            propertyId += c - '0';
+                        }
+                        else if (c == '-')
+                            negativeNumber = true;
+                        else
                             return false;
                     }
 
                     // ignore other integers
-                    while ((c >= '0' && c <= '9') || c == ':')
-                    {
-                        reader.ignore(1);
-                        c = reader.peek();
-                    }
-                }
-                else if (strcmp(buffer, "quest") == 0)
-                {
-                    // no color check for questlinks, each client will adapt it anyway
-                    uint32 questid = 0;
-                    // read questid
-                    char c = reader.peek();
-                    while (c >= '0' && c <= '9')
-                    {
-                        reader.ignore(1);
-                        questid *= 10;
-                        questid += c - '0';
-                        c = reader.peek();
-                    }
-
-                    linkedQuest = sObjectMgr.GetQuestTemplate(questid);
-
-                    if (!linkedQuest)
-                    {
-                        DEBUG_LOG("ChatHandler::isValidChatMessage Questtemplate %u not found", questid);
-                        return false;
-                    }
-
-                    if (c != ':')
-                    {
-                        DEBUG_LOG("ChatHandler::isValidChatMessage Invalid quest link structure");
-                        return false;
-                    }
-
-                    reader.ignore(1);
                     c = reader.peek();
-                    // level
-                    uint32 questlevel = 0;
-                    while (c >= '0' && c <= '9')
-                    {
-                        reader.ignore(1);
-                        questlevel *= 10;
-                        questlevel += c - '0';
-                        c = reader.peek();
-                    }
-
-                    if (questlevel >= STRONG_MAX_LEVEL)
-                    {
-                        DEBUG_LOG("ChatHandler::isValidChatMessage Quest level %u too big", questlevel);
-                        return false;
-                    }
-
-                    if (c != '|')
-                    {
-                        DEBUG_LOG("ChatHandler::isValidChatMessage Invalid quest link structure");
-                        return false;
-                    }
-                }
-                else if (strcmp(buffer, "talent") == 0)
-                {
-                    // talent links are always supposed to be blue
-                    if (color != CHAT_LINK_COLOR_TALENT)
-                        return false;
-
-                    // read talent entry
-                    reader.getline(buffer, 256, ':');
-                    if (reader.eof())                       // : must be
-                        return false;
-
-                    TalentEntry const *talentInfo = sTalentStore.LookupEntry(atoi(buffer));
-                    if (!talentInfo)
-                        return false;
-
-                    linkedSpell = sSpellMgr.GetSpellEntry(talentInfo->RankID[0]);
-                    if (!linkedSpell)
-                        return false;
-
-                    char c = reader.peek();
-                    // skillpoints? whatever, drop it
-                    while (c != '|' && c != '\0')
+                    while (((c >= '0' && c <= '9') || c == ':') && c != '|' && !reader.eof())
                     {
                         reader.ignore(1);
                         c = reader.peek();
                     }
-                }
-                else if (strcmp(buffer, "spell") == 0)
-                {
-                    if (color != CHAT_LINK_COLOR_SPELL)
-                        return false;
-
-                    uint32 spellid = 0;
-                    // read spell entry
-                    char c = reader.peek();
-                    while (c >= '0' && c <= '9')
-                    {
-                        reader.ignore(1);
-                        spellid *= 10;
-                        spellid += c - '0';
-                        c = reader.peek();
-                    }
-                    linkedSpell = sSpellMgr.GetSpellEntry(spellid);
-                    if (!linkedSpell)
-                        return false;
                 }
                 else if (strcmp(buffer, "enchant") == 0)
                 {
@@ -2157,39 +2087,10 @@ bool ChatHandler::isValidChatMessage(const char* message)
                     // verify the link name
                     if (linkedSpell)
                     {
-                        // spells with that flag have a prefix of "$PROFESSION: "
-                        if (linkedSpell->Attributes & SPELL_ATTR_TRADESPELL)
-                        {
-                            // lookup skillid
-                            SkillLineAbilityMapBounds bounds = sSpellMgr.GetSkillLineAbilityMapBounds(linkedSpell->Id);
-                            if (bounds.first == bounds.second)
-                                return false;
-
-                            SkillLineAbilityEntry const *skillInfo = bounds.first->second;
-
-                            if (!skillInfo)
-                                return false;
-
-                            SkillLineEntry const *skillLine = sSkillLineStore.LookupEntry(skillInfo->skillId);
-                            if (!skillLine)
-                                return false;
-
-                            for (uint8 i = 0; i < MAX_DBC_LOCALE; ++i)
-                            {
-                                uint32 skillLineNameLength = strlen(skillLine->name[i]);
-                                if (skillLineNameLength > 0 && strncmp(skillLine->name[i], buffer, skillLineNameLength) == 0)
-                                {
-                                    // found the prefix, remove it to perform spellname validation below
-                                    // -2 = strlen(": ")
-                                    uint32 spellNameLength = strlen(buffer) - skillLineNameLength - 2;
-                                    memmove(buffer, buffer + skillLineNameLength + 2, spellNameLength + 1);
-                                }
-                            }
-                        }
                         bool foundName = false;
                         for (uint8 i = 0; i < MAX_DBC_LOCALE; ++i)
                         {
-                            if (*linkedSpell->SpellName[i] && strcmp(linkedSpell->SpellName[i], buffer) == 0)
+                            if (!linkedSpell->SpellName[i].empty() && strcmp(linkedSpell->SpellName[i].c_str(), buffer) == 0)
                             {
                                 foundName = true;
                                 break;
@@ -2198,63 +2099,77 @@ bool ChatHandler::isValidChatMessage(const char* message)
                         if (!foundName)
                             return false;
                     }
-                    else if (linkedQuest)
-                    {
-                        if (linkedQuest->GetTitle() != buffer)
-                        {
-                            QuestLocale const *ql = sObjectMgr.GetQuestLocale(linkedQuest->GetQuestId());
-
-                            if (!ql)
-                            {
-                                DEBUG_LOG("ChatHandler::isValidChatMessage default questname didn't match and there is no locale");
-                                return false;
-                            }
-
-                            bool foundName = false;
-                            for (uint8 i = 0; i < ql->Title.size(); i++)
-                            {
-                                if (ql->Title[i] == buffer)
-                                {
-                                    foundName = true;
-                                    break;
-                                }
-                            }
-                            if (!foundName)
-                            {
-                                DEBUG_LOG("ChatHandler::isValidChatMessage no quest locale title matched");
-                                return false;
-                            }
-                        }
-                    }
                     else if (linkedItem)
                     {
-                        std::string expectedName = std::string(linkedItem->Name1);
+                        bool hasValidRandomProperty = false;
+                        bool hasRandomProperty = linkedItem->RandomProperty > 0;
+                        int enchantCount = 0;
 
-                        if (expectedName != buffer)
+                        // Item has no random property. All properties must be enchants, of which
+                        // there can only be two. One permanent, one temporary
+                        if (!hasRandomProperty && properties.size() > 2)
+                            return false;
+
+                        int dbLocale = m_session->GetSessionDbLocaleIndex();
+                        LocaleConstant dbcLocale = m_session->GetSessionDbcLocale();
+
+                        const ItemRandomPropertiesEntry* iProp = nullptr;
+                        for (auto iter = properties.begin(); iter != properties.end(); ++iter)
                         {
-                            ItemLocale const *il = sObjectMgr.GetItemLocale(linkedItem->ItemId);
+                            auto prop = *iter;
+                            iProp = nullptr;
 
-                            bool foundName = false;
-                            for (uint8 i = LOCALE_koKR; i < MAX_LOCALE; ++i)
+                            if (!hasRandomProperty)
                             {
-                                int8 dbIndex = sObjectMgr.GetIndexForLocale(LocaleConstant(i));
-                                if (dbIndex == -1 || il == nullptr || (size_t)dbIndex >= il->Name.size())
-                                    // using strange database/client combinations can lead to this case
-                                    expectedName = linkedItem->Name1;
+                                if (sSpellItemEnchantmentStore.LookupEntry(prop))
+                                    ++enchantCount;
                                 else
-                                    expectedName = il->Name[dbIndex];
+                                    return false;
+                            }
+                            else
+                            {
+                                // This is tricky - some enchants and random properties share IDs!
+                                // do we just compare all of the names?
+                                if (!hasValidRandomProperty)
+                                    iProp = sItemRandomPropertiesStore.LookupEntry(prop);
 
-                                if (expectedName == buffer)
+                                // Check if we have a valid random property with this prop...
+                                if (iProp)
                                 {
-                                    foundName = true;
-                                    break;
+                                    // Compare the name. If the name isn't correct, maybe it's an enchantment
+                                    // instead.
+                                    std::string expectedName = linkedItem->Name1;
+                                    Item::GetLocalizedNameWithSuffix(expectedName, linkedItem, iProp, dbLocale, dbcLocale);
+                                    if (expectedName == buffer)
+                                    {
+                                        hasValidRandomProperty = true;
+                                    }
+                                }
+
+                                // Still don't have a valid random prop. If it's an enchantment, inc count.
+                                // Else this property is entirely invalid.
+                                if (!hasValidRandomProperty)
+                                {
+                                    if (sSpellItemEnchantmentStore.LookupEntry(prop))
+                                        ++enchantCount;
+                                    else
+                                        return false;
                                 }
                             }
-                            if (!foundName)
-                            {
-                                DEBUG_LOG("ChatHandler::isValidChatMessage linked item name wasn't found in any localization");
+
+                            if (enchantCount > 2)
                                 return false;
-                            }
+                        }
+
+                        if (hasRandomProperty && !hasValidRandomProperty)
+                            return false;
+                        else if (!hasRandomProperty)
+                        {
+                            // Finally compare base name
+                            std::string expectedName = linkedItem->Name1;
+                            Item::GetLocalizedNameWithSuffix(expectedName, linkedItem, nullptr, dbLocale, dbcLocale);
+                            if (expectedName != buffer)
+                                return false;
                         }
                     }
                     // that place should never be reached - if nothing linked has been set in |H
@@ -3474,11 +3389,12 @@ std::string ChatHandler::ExtractPlayerNameFromLink(char** text)
  *
  * @return           true if extraction successful
  */
-bool ChatHandler::ExtractPlayerTarget(char** args, Player** player /*= NULL*/, ObjectGuid* player_guid /*= NULL*/, std::string* player_name /*= NULL*/)
+bool ChatHandler::ExtractPlayerTarget(char** args, Player** player /*= NULL*/, ObjectGuid* player_guid /*= NULL*/, std::string* player_name /*= NULL*/, bool use_extended_response)
 {
+    std::string name = "";
     if (*args && **args)
     {
-        std::string name = ExtractPlayerNameFromLink(args);
+        name = ExtractPlayerNameFromLink(args);
         if (name.empty())
         {
             SendSysMessage(LANG_PLAYER_NOT_FOUND);
@@ -3519,7 +3435,16 @@ bool ChatHandler::ExtractPlayerTarget(char** args, Player** player /*= NULL*/, O
     // some from req. data must be provided (note: name is empty if player not exist)
     if ((!player || !*player) && (!player_guid || !*player_guid) && (!player_name || player_name->empty()))
     {
-        SendSysMessage(LANG_PLAYER_NOT_FOUND);
+        if (use_extended_response && !name.empty())
+        {
+            std::string message(GetMangosString(LANG_PLAYER_NOT_FOUND));
+            message.append(" (" + name + ")");
+            SendSysMessage(message.c_str());
+        }
+        else
+        {
+            SendSysMessage(LANG_PLAYER_NOT_FOUND);
+        }
         SetSentErrorMessage(true);
         return false;
     }

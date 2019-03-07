@@ -48,11 +48,6 @@ enum
 
 const float THREAT_LOCK = FLT_MAX;
 
-struct SpawnLocations
-{
-    float x, y, z;
-};
-
 static SpawnLocations AddPop[] =
 {
     { -9312.0f, 1281.0f, -62.0f },
@@ -114,6 +109,9 @@ struct boss_buruAI : public ScriptedAI
             if (Creature* egg = m_creature->SummonCreature(NPC_BURU_EGG, Eggs[i].x, Eggs[i].y, Eggs[i].z, 0))
                 m_eggsGUID[i] = egg->GetGUID();
         }
+
+        if (m_pInstance)
+            m_pInstance->SetData(TYPE_BURU, NOT_STARTED);
     }
 
     void Aggro(Unit *pWho)
@@ -121,6 +119,8 @@ struct boss_buruAI : public ScriptedAI
         m_creature->SetInCombatWithZone();
         DoCast(m_creature, SPELL_THORNS);
         m_creature->SetArmor(20000);
+        if (m_pInstance)
+            m_pInstance->SetData(TYPE_BURU, IN_PROGRESS);
     }
 
     void JustDied(Unit* pKiller)
@@ -129,6 +129,9 @@ struct boss_buruAI : public ScriptedAI
         Map::PlayerList const &liste = m_creature->GetMap()->GetPlayers();
         for (Map::PlayerList::const_iterator i = liste.begin(); i != liste.end(); ++i)
             i->getSource()->RemoveAurasDueToSpell(SPELL_CREEPING_PLAGUE);
+
+        if (m_pInstance)
+            m_pInstance->SetData(TYPE_BURU, DONE);
     }
 
     void UpdateAI(const uint32 uiDiff)
@@ -279,8 +282,8 @@ struct boss_buruAI : public ScriptedAI
             {
                 for (int i = 0; i < 3; i++)
                 {
-                    Creature* summoned = m_creature->SummonCreature(NPC_HIVEZARA_HATCHLING, AddPop[i].x, AddPop[i].y, AddPop[i].z, 0, TEMPSUMMON_TIMED_DESPAWN_OUT_OF_COMBAT, 30000);
-                    summoned->SetInCombatWithZone();
+                    if (Creature* summoned = m_creature->SummonCreature(NPC_HIVEZARA_HATCHLING, AddPop[i].x, AddPop[i].y, AddPop[i].z, 0, TEMPSUMMON_TIMED_DESPAWN_OUT_OF_COMBAT, 30000))
+                        summoned->SetInCombatWithZone();
                 }
                 m_HatchPop = true;
             }
@@ -336,8 +339,11 @@ struct mob_buru_eggAI : public ScriptedAI
         // Explose et fait pop une creature quand il meurs
         m_creature->CastSpell(m_creature, SPELL_EXPLODE, false);
 
-        Creature* add = m_creature->SummonCreature(NPC_HIVEZARA_HATCHLING, m_creature->GetPositionX(), m_creature->GetPositionY(), m_creature->GetPositionZ(), 0, TEMPSUMMON_TIMED_DESPAWN_OUT_OF_COMBAT, 30000);
-        add->SetInCombatWithZone();
+        if (Creature* add = m_creature->SummonCreature(NPC_HIVEZARA_HATCHLING, m_creature->GetPositionX(), m_creature->GetPositionY(),
+            m_creature->GetPositionZ(), 0, TEMPSUMMON_TIMED_DESPAWN_OUT_OF_COMBAT, 30000))
+        {
+            add->SetInCombatWithZone();
+        }
 
         // Si Buru est a portee, il inflige des degats a celui-ci et changement de cible
         if (Creature* pBuru = m_pInstance->GetCreature(m_pInstance->GetData64(DATA_BURU)))

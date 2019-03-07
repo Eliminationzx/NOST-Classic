@@ -351,6 +351,9 @@ template <class T>
 void PoolGroup<T>::SpawnObject(MapPersistentState& mapState, uint32 limit, uint32 triggerFrom, bool instantly)
 {
     SpawnedPoolData& spawns = mapState.GetSpawnedPoolData();
+    // GameObjects are processed differently than Creatures
+    // we have a triggerFrom go but it's alreay despawned
+    bool isTriggerSpawned = spawns.IsSpawnedObject<T>(triggerFrom);
 
     uint32 lastDespawned = 0;
     int count = limit - spawns.GetSpawnedObjects(poolId);
@@ -360,8 +363,8 @@ void PoolGroup<T>::SpawnObject(MapPersistentState& mapState, uint32 limit, uint3
     // spawned by 1
     if (triggerFrom)
     {
-        if (spawns.IsSpawnedObject<T>(triggerFrom))
-        ++count;
+        if (isTriggerSpawned)
+            ++count;
     }
     // Instance loading : no object spawned, check if any timers have been loaded
     // from the database and spawn the object at the right location
@@ -402,7 +405,7 @@ void PoolGroup<T>::SpawnObject(MapPersistentState& mapState, uint32 limit, uint3
         if (obj->guid == lastDespawned)
             continue;
 
-        if (obj->guid == triggerFrom)
+        if (obj->guid == triggerFrom && isTriggerSpawned)
         {
             //MANGOS_ASSERT(spawns.IsSpawnedObject<T>(obj->guid));
             //MANGOS_ASSERT(spawns.GetSpawnedObjects(poolId) > 0);
@@ -414,13 +417,18 @@ void PoolGroup<T>::SpawnObject(MapPersistentState& mapState, uint32 limit, uint3
         spawns.AddSpawn<T>(obj->guid, poolId);
         Spawn1Object(mapState, obj, instantly);
 
-        if (triggerFrom)
+        if (triggerFrom && isTriggerSpawned)
         {
             // One spawn one despawn no count increase
             DespawnObject(mapState, triggerFrom);
             lastDespawned = triggerFrom;
             triggerFrom = 0;
         }
+
+        // Spawned based on the trigger, trigger was not previously spawned, spawn count > 1. Must
+        // clear triggerFrom to prevent trying to spawn the same object multiple times
+        if (triggerFrom == obj->guid)
+            triggerFrom = 0;
     }
 }
 
@@ -479,7 +487,7 @@ void PoolGroup<Creature>::Spawn1Object(MapPersistentState& mapState, PoolObject*
         }
         // for not loaded grid just update respawn time (avoid work for instances until implemented support)
         else if (!instantly)
-            mapState.SaveCreatureRespawnTime(obj->guid, time(NULL) + data->spawntimesecs);
+            mapState.SaveCreatureRespawnTime(obj->guid, time(NULL) + data->GetRandomRespawnTime());
     }
 }
 
@@ -528,8 +536,8 @@ void PoolGroup<GameObject>::Spawn1Object(MapPersistentState& mapState, PoolObjec
         else if (!instantly)
         {
             // for spawned by default object only
-            if (data->spawntimesecs >= 0)
-                mapState.SaveGORespawnTime(obj->guid, time(NULL) + data->ComputeRespawnDelay(data->spawntimesecs));
+            if (data->spawntimesecsmin >= 0)
+                mapState.SaveGORespawnTime(obj->guid, time(NULL) + data->ComputeRespawnDelay(data->GetRandomRespawnTime()));
         }
     }
 }
@@ -666,7 +674,7 @@ void PoolManager::LoadFromDB()
 
     mPoolTemplate.resize(max_pool_id + 1);
 
-    result = WorldDatabase.Query("SELECT entry, max_limit, flags, description, instance FROM pool_template");
+    result = WorldDatabase.PQuery("SELECT entry, max_limit, flags, description, instance FROM pool_template WHERE ((%u >= patch_min) && (%u <= patch_max))", sWorld.GetWowPatch(), sWorld.GetWowPatch());
     if (!result)
     {
         mPoolTemplate.clear();
@@ -709,11 +717,11 @@ void PoolManager::LoadFromDB()
     mPoolCreatureGroups.resize(max_pool_id + 1);
     mCreatureSearchMap.clear();
 
-    result = WorldDatabase.Query(
-            "SELECT guid, pool_entry, chance, 0, flags FROM pool_creature "
+    result = WorldDatabase.PQuery(
+            "SELECT guid, pool_entry, chance, 0, flags FROM pool_creature WHERE ((%u >= patch_min) && (%u <= patch_max)) "
             "UNION "
             " SELECT guid, pool_entry, chance, pool_creature_template.id, pool_creature_template.flags "
-                "FROM pool_creature_template LEFT JOIN creature ON creature.id = pool_creature_template.id;");
+                "FROM pool_creature_template LEFT JOIN creature ON creature.id = pool_creature_template.id;", sWorld.GetWowPatch(), sWorld.GetWowPatch());
 
     count = 0;
     if (!result)
@@ -783,10 +791,10 @@ void PoolManager::LoadFromDB()
     mPoolGameobjectGroups.resize(max_pool_id + 1);
     mGameobjectSearchMap.clear();
     //                                   1     2           3       4  5
-    result = WorldDatabase.Query("SELECT guid, pool_entry, chance, 0, flags FROM pool_gameobject "
+    result = WorldDatabase.PQuery("SELECT guid, pool_entry, chance, 0, flags FROM pool_gameobject WHERE ((%u >= patch_min) && (%u <= patch_max)) "
         "UNION "
         "SELECT guid, pool_entry, chance, pool_gameobject_template.id, pool_gameobject_template.flags "
-        "FROM pool_gameobject_template LEFT JOIN gameobject ON gameobject.id = pool_gameobject_template.id");
+        "FROM pool_gameobject_template LEFT JOIN gameobject ON gameobject.id = pool_gameobject_template.id", sWorld.GetWowPatch(), sWorld.GetWowPatch());
 
     count = 0;
     if (!result)

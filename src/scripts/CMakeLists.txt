@@ -13,13 +13,11 @@ set (SCRIPTS_SRCS
 	eastern_kingdoms/dun_morogh/gnomeregan/gnomeregan.h
 	eastern_kingdoms/eastern_plaguelands/naxxramas/naxxramas.h
 	eastern_kingdoms/eastern_plaguelands/stratholme/stratholme.h
-	eastern_kingdoms/silverpine_forest/shadowfang_keep/shadowfang_keep.h
 	eastern_kingdoms/stormwind_city/quest_stormwind_rendezvous.h
 	eastern_kingdoms/stranglethorn_vale/zulgurub/zulgurub.h
 	eastern_kingdoms/swamp_of_sorrows/sunken_temple/sunken_temple.h
 	eastern_kingdoms/tirisfal_glades/scarlet_monastery/scarlet_monastery.h
 	eastern_kingdoms/uldaman/uldaman.h
-	eastern_kingdoms/western_plaguelands/quest_in_dreams.h
 	eastern_kingdoms/western_plaguelands/scholomance/scholomance.h
 	eastern_kingdoms/westfall/deadmines/deadmines.h
 	kalimdor/ashenvale/blackfathom_deeps/blackfathom_deeps.h
@@ -134,6 +132,7 @@ set (SCRIPTS_SRCS
 	eastern_kingdoms/eastern_plaguelands/stratholme/boss_postmaster_malown.cpp
 	eastern_kingdoms/eastern_plaguelands/stratholme/boss_ramstein_the_gorger.cpp
 	eastern_kingdoms/eastern_plaguelands/stratholme/boss_timmy_the_cruel.cpp
+	eastern_kingdoms/eastern_plaguelands/stratholme/boss_atiesh.cpp
 	eastern_kingdoms/eastern_plaguelands/stratholme/instance_stratholme.cpp
 	eastern_kingdoms/eastern_plaguelands/stratholme/stratholme.cpp
 	eastern_kingdoms/elwynn_forest/elwynn_forest.cpp
@@ -145,7 +144,6 @@ set (SCRIPTS_SRCS
 	eastern_kingdoms/searing_gorge/searing_gorge.cpp
 	eastern_kingdoms/silverpine_forest/silverpine_forest.cpp
 	eastern_kingdoms/silverpine_forest/shadowfang_keep/instance_shadowfang_keep.cpp
-	eastern_kingdoms/silverpine_forest/shadowfang_keep/shadowfang_keep.cpp
 	eastern_kingdoms/stormwind_city/quest_stormwind_rendezvous.cpp
 	eastern_kingdoms/stormwind_city/stormwind_city.cpp
 	eastern_kingdoms/stranglethorn_vale/stranglethorn_vale.cpp
@@ -184,7 +182,6 @@ set (SCRIPTS_SRCS
 	eastern_kingdoms/uldaman/instance_uldaman.cpp
 	eastern_kingdoms/uldaman/uldaman.cpp
 	eastern_kingdoms/undercity/undercity.cpp
-	eastern_kingdoms/western_plaguelands/quest_in_dreams.cpp
 	eastern_kingdoms/western_plaguelands/western_plaguelands.cpp
 	eastern_kingdoms/western_plaguelands/scholomance/boss_darkmaster_gandling.cpp
 	eastern_kingdoms/western_plaguelands/scholomance/boss_death_knight_darkreaver.cpp
@@ -276,18 +273,18 @@ set (SCRIPTS_SRCS
 	PrecompiledHeaders/scriptPCH.cpp
 	world/areatrigger_scripts.cpp
 	world/boss_anachronos.cpp
-	world/boss_azuregos.cpp
 	world/boss_lord_kazzak.cpp
 	world/elemental_invasions.cpp
 	world/event_scourge_invasion.cpp
 	world/go_scripts.cpp
-	world/guards.cpp
-	world/mob_generic_creature.cpp
 	world/npcs_special.cpp
 	world/npc_professions.cpp
 	world/spell_scripts.cpp
 	world/totems.cpp
 	world/world_event_naxxramas.cpp
+    world/world_event_naxxramas.h
+    world/world_event_wareffort.cpp
+    world/world_event_wareffort.h
 	world/dragons_of_nightmare/boss_dragon_of_nightmare.cpp
 	world/dragons_of_nightmare/boss_emeriss.cpp
 	world/dragons_of_nightmare/boss_lethon.cpp
@@ -329,6 +326,7 @@ include_directories(
   ${CMAKE_SOURCE_DIR}/src/game/Group
   ${CMAKE_SOURCE_DIR}/src/game/Guild
   ${CMAKE_SOURCE_DIR}/src/game/Handlers
+  ${CMAKE_SOURCE_DIR}/src/game/LFG
   ${CMAKE_SOURCE_DIR}/src/game/Mail
   ${CMAKE_SOURCE_DIR}/src/game/Maps
   ${CMAKE_SOURCE_DIR}/src/game/Maps/Pool
@@ -345,6 +343,7 @@ include_directories(
   ${CMAKE_SOURCE_DIR}/src/game/vmap
   ${CMAKE_SOURCE_DIR}/src/game/Warden
   ${CMAKE_SOURCE_DIR}/dep/include
+  ${CMAKE_SOURCE_DIR}/dep/recastnavigation
   ${CMAKE_SOURCE_DIR}/dep/include/g3dlite
   ${CMAKE_BINARY_DIR}
   ${CMAKE_BINARY_DIR}/src/shared
@@ -361,6 +360,8 @@ endif()
 add_library(${LIBRARY_NAME} STATIC
   ${SCRIPTS_SRCS}
 )
+
+SET_TARGET_PROPERTIES (${LIBRARY_NAME} PROPERTIES FOLDER "Game Libs")
 
 target_link_libraries(scripts
   game

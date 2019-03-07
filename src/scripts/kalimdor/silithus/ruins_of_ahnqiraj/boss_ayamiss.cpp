@@ -43,11 +43,6 @@ enum
     NPC_HIVEZARA_SWARMER        =  15546
 };
 
-struct SpawnLocations
-{
-    float x, y, z;
-};
-
 struct MoveLocations
 {
     float x, y, z, an;
@@ -77,8 +72,11 @@ struct boss_ayamissAI : public ScriptedAI
 {
     boss_ayamissAI(Creature* pCreature) : ScriptedAI(pCreature)
     {
+        m_pInstance = (ScriptedInstance*)pCreature->GetInstanceData();
         Reset();
     }
+
+    ScriptedInstance* m_pInstance;
 
     uint32 m_uiStingerSpray_Timer;
     uint32 m_uiPoisonStinger_Timer;
@@ -121,7 +119,7 @@ struct boss_ayamissAI : public ScriptedAI
         /** Configure Ayamiss into flying mode */
         m_creature->SetFly(true);
         m_creature->SetWalk(false);
-        if (IsCombatMovement())
+        if (IsCombatMovementEnabled())
             SetCombatMovement(false);
 
         /** Force despawn of invocated Hornet and Larva from Hive'Zara */
@@ -138,10 +136,21 @@ struct boss_ayamissAI : public ScriptedAI
             if ((*itr)->isAlive())
                 (*itr)->AddObjectToRemoveList();
         }
+
+        if (m_pInstance)
+            m_pInstance->SetData(TYPE_AYAMISS, NOT_STARTED);
     }
 
     void Aggro(Unit* pWho)
     {
+        if (m_pInstance)
+            m_pInstance->SetData(TYPE_AYAMISS, IN_PROGRESS);
+    }
+
+    void JustDied(Unit* pKiller)
+    {
+        if (m_pInstance)
+            m_pInstance->SetData(TYPE_AYAMISS, DONE);
     }
 
     void SpellHitTarget(Unit* pCaster, const SpellEntry* pSpell)
@@ -240,15 +249,12 @@ struct boss_ayamissAI : public ScriptedAI
                 if (DoCastSpellIfCan(pTarget, SPELL_PARALYZE) == CAST_OK)
                 {
                     uint32 random = urand(0, 1);
-                    Creature * m_larva = m_creature->SummonCreature(NPC_HIVEZARA_LARVA,
-                                         Larva[random].x,
-                                         Larva[random].y,
-                                         Larva[random].z,
-                                         0,
-                                         TEMPSUMMON_TIMED_DESPAWN,
-                                         15000);
-                    m_larva->SetFly(false);
-                    m_larva->SetWalk(true);
+                    if (Creature *m_larva = m_creature->SummonCreature(NPC_HIVEZARA_LARVA,
+                        Larva[random].x, Larva[random].y, Larva[random].z, 0, TEMPSUMMON_TIMED_DESPAWN, 15000))
+                    {
+                        m_larva->SetFly(false);
+                        m_larva->SetWalk(true);
+                    }
 
                     m_uiSummonPlayer_Timer = 15000;
                     m_uiSacrifice_Timer = 10000;
@@ -375,7 +381,7 @@ struct mob_zara_larvaAI : public ScriptedAI
                 m_creature->MonsterMove(LarvaMove[3].x, LarvaMove[3].y, LarvaMove[3].z);
                 ++m_waypoint;
             }
-            else if (m_waypoint == 0)
+            else if (i->getSource()->HasAura(SPELL_PARALYZE) && m_waypoint == 0)
             {
                 m_creature->MonsterMove(LarvaMove[m_waypoint].x,
                                         LarvaMove[m_waypoint].y,

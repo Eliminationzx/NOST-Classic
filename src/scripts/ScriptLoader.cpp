@@ -36,9 +36,7 @@ void AddSC_npc_king_gordok();
 void AddSC_areatrigger_scripts();
 void AddSC_dragons_of_nightmare();
 void AddSC_boss_lord_kazzak();
-void AddSC_generic_creature();
 void AddSC_go_scripts();
-void AddSC_guards();
 void AddSC_npc_professions();
 void AddSC_npcs_special();
 void AddSC_Totems();
@@ -87,8 +85,6 @@ void AddSC_instance_blackwing_lair();
 void AddSC_deadmines();                              //deadmines
 void AddSC_instance_deadmines();
 void AddSC_boss_mr_smite();
-//void AddSC_boss_sneed_shredder();
-//void AddSC_boss_sneed();
 
 void AddSC_gnomeregan();                             //gnomeregan
 void AddSC_boss_thermaplugg();
@@ -117,6 +113,8 @@ void AddSC_boss_maexxna();
 void AddSC_boss_noth();
 void AddSC_boss_heigan();
 void AddSC_boss_patchwerk();
+void AddSC_boss_grobbulus();
+void AddSC_boss_thaddius();
 void AddSC_boss_razuvious();
 void AddSC_boss_sapphiron();
 void AddSC_instance_naxxramas();
@@ -145,7 +143,6 @@ void AddSC_boss_vectus();
 //void AddSC_boss_lordblackwood();
 void AddSC_scholo_trash();
 void AddSC_instance_scholomance();
-void AddSC_shadowfang_keep();                        //shadowfang_keep
 void AddSC_instance_shadowfang_keep();
 void AddSC_boss_magistrate_barthilas();              //stratholme
 void AddSC_boss_maleki_the_pallid();
@@ -157,6 +154,7 @@ void AddSC_boss_timmy_the_cruel();
 void AddSC_boss_postmaster_malown();
 void AddSC_boss_baron_rivendare();
 void AddSC_boss_dathrohan_balnazzar();
+void AddSC_boss_atiesh();
 void AddSC_instance_stratholme();
 void AddSC_stratholme();
 void AddSC_instance_sunken_temple();                 //sunken_temple
@@ -204,7 +202,6 @@ void AddSC_swamp_of_sorrows();
 void AddSC_tirisfal_glades();
 void AddSC_undercity();
 void AddSC_western_plaguelands();
-void AddSC_quest_in_dreams();
 void AddSC_westfall();
 void AddSC_wetlands();
 
@@ -216,6 +213,8 @@ void AddSC_boss_landslide();
 void AddSC_boss_noxxion();
 void AddSC_boss_ptheradras();
 void AddSC_maraudon();
+void AddSC_instance_maraudon();
+void AddSC_instance_onyxia_lair();
 void AddSC_boss_onyxia();                            //onyxias_lair
 void AddSC_boss_amnennar_the_coldbringer();          //razorfen_downs
 void AddSC_razorfen_downs();
@@ -248,7 +247,6 @@ void AddSC_instance_zulfarrak();
 
 void AddSC_ashenvale();
 void AddSC_azshara();
-void AddSC_boss_azuregos();
 void AddSC_boss_anachronos();
 void AddSC_darkshore();
 void AddSC_desolace();
@@ -269,6 +267,7 @@ void AddSC_thousand_needles();
 void AddSC_thunder_bluff();
 void AddSC_ungoro_crater();
 void AddSC_winterspring();
+void AddSC_war_effort();
 
 void AddSC_npc_j_eevee();                            // J'Eevee, the Imp in a Jar
 
@@ -305,15 +304,15 @@ void AddScripts()
     AddSC_areatrigger_scripts();
     AddSC_dragons_of_nightmare();
     AddSC_boss_lord_kazzak();
-    AddSC_generic_creature();
     AddSC_go_scripts();
-    AddSC_guards();
     AddSC_npc_professions();
     AddSC_npcs_special();
     AddSC_Totems();
     AddSC_world_event_naxxramas();
     AddSC_event_scourge_invasion();
     AddSC_spell_scripts();
+
+    AddSC_war_effort();
 
     //eastern kingdoms
     AddSC_blackrock_depths();                               //blackrock_depths
@@ -356,8 +355,6 @@ void AddScripts()
     AddSC_deadmines();                                      //deadmines
     AddSC_instance_deadmines();
     AddSC_boss_mr_smite();
-    //AddSC_boss_sneed_shredder();
-    //AddSC_boss_sneed();
     AddSC_gnomeregan();                                     //gnomeregan
     AddSC_boss_thermaplugg();
     AddSC_instance_gnomeregan();
@@ -384,6 +381,8 @@ void AddScripts()
     AddSC_boss_noth();
     AddSC_boss_heigan();
     AddSC_boss_patchwerk();
+    AddSC_boss_grobbulus();
+    AddSC_boss_thaddius();
     AddSC_boss_razuvious();
     AddSC_boss_sapphiron();
     AddSC_instance_naxxramas();
@@ -412,7 +411,6 @@ void AddScripts()
     //AddSC_boss_lordblackwood();
     AddSC_scholo_trash();
     AddSC_instance_scholomance();
-    AddSC_shadowfang_keep();                                //shadowfang_keep
     AddSC_instance_shadowfang_keep();
     AddSC_boss_magistrate_barthilas();                      //stratholme
     AddSC_boss_maleki_the_pallid();
@@ -424,6 +422,7 @@ void AddScripts()
     AddSC_boss_postmaster_malown();
     AddSC_boss_baron_rivendare();
     AddSC_boss_dathrohan_balnazzar();
+    AddSC_boss_atiesh();
     AddSC_instance_stratholme();
     AddSC_stratholme();
     AddSC_instance_sunken_temple();                         //sunken_temple
@@ -471,7 +470,6 @@ void AddScripts()
     AddSC_tirisfal_glades();
     AddSC_undercity();
     AddSC_western_plaguelands();
-    AddSC_quest_in_dreams();
     AddSC_westfall();
     AddSC_wetlands();
 
@@ -483,6 +481,8 @@ void AddScripts()
     AddSC_boss_noxxion();
     AddSC_boss_ptheradras();
     AddSC_maraudon();
+    AddSC_instance_maraudon();
+    AddSC_instance_onyxia_lair();
     AddSC_boss_onyxia();                                    //onyxias_lair
     AddSC_boss_amnennar_the_coldbringer();                  //razorfen_downs
     AddSC_razorfen_downs();
@@ -515,7 +515,6 @@ void AddScripts()
 
     AddSC_ashenvale();
     AddSC_azshara();
-    AddSC_boss_azuregos();
     AddSC_boss_anachronos();
     AddSC_darkshore();
     AddSC_desolace();

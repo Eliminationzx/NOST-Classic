@@ -20,18 +20,9 @@
  */
 
 #include "AggressorAI.h"
-#include "Errors.h"
 #include "Creature.h"
-#include "SharedDefines.h"
-#include "VMapFactory.h"
-#include "World.h"
-#include "DBCStores.h"
-#include "Map.h"
 
-#include <list>
-
-int
-AggressorAI::Permissible(const Creature *creature)
+int AggressorAI::Permissible(const Creature *creature)
 {
     // have some hostile factions, it will be selected by IsHostileTo check at MoveInLineOfSight
     if (!(creature->GetCreatureInfo()->flags_extra & CREATURE_FLAG_EXTRA_NO_AGGRO) && !creature->IsNeutralToAll())
@@ -40,12 +31,7 @@ AggressorAI::Permissible(const Creature *creature)
     return PERMIT_BASE_NO;
 }
 
-AggressorAI::AggressorAI(Creature *c) : CreatureAI(c)
-{
-}
-
-void
-AggressorAI::MoveInLineOfSight(Unit *u)
+void AggressorAI::MoveInLineOfSight(Unit *u)
 {
     // Check this now to prevent calling expensive functions (isInAccessablePlaceFor / IsWithinLOSInMap)
     if (m_creature->getVictim() && !m_creature->GetMap()->IsDungeon())
@@ -67,17 +53,18 @@ AggressorAI::MoveInLineOfSight(Unit *u)
 }
 
 
-void
-AggressorAI::UpdateAI(const uint32 /*diff*/)
+void AggressorAI::UpdateAI(const uint32 uiDiff)
 {
-    // update i_victimGuid if m_creature->getVictim() !=0 and changed
     if (!m_creature->SelectHostileTarget() || !m_creature->getVictim())
         return;
+
+    if (!m_CreatureSpells.empty())
+        DoSpellTemplateCasts(uiDiff);
+
     DoMeleeAttackIfReady();
 }
 
-void
-AggressorAI::AttackStart(Unit *u)
+void AggressorAI::AttackStart(Unit *u)
 {
     if (!u)
         return;
@@ -88,6 +75,7 @@ AggressorAI::AttackStart(Unit *u)
         m_creature->SetInCombatWith(u);
         u->SetInCombatWith(m_creature);
 
-        m_creature->GetMotionMaster()->MoveChase(u);
+        if (m_bCombatMovement)
+            m_creature->GetMotionMaster()->MoveChase(u);
     }
 }

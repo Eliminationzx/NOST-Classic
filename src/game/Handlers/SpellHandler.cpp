@@ -281,37 +281,10 @@ void WorldSession::HandleGameObjectUseOpcode(WorldPacket & recv_data)
     }
 }
 
-void WorldSession::HandleMeetingStoneJoinOpcode(WorldPacket & recv_data)
-{
-    ObjectGuid guid;
-
-    recv_data >> guid;
-
-    DEBUG_LOG("WORLD: Recvd CMSG_MEETINGSTONE_JOIN Message guid: %s", guid.GetString().c_str());
-
-    // ignore for remote control state
-    if (!_player->IsSelfMover())
-        return;
-
-    GameObject *obj = GetPlayer()->GetMap()->GetGameObject(guid);
-    if (!obj)
-        return;
-
-    // Never expect this opcode for some type GO's
-    if (obj->GetGoType() != GAMEOBJECT_TYPE_MEETINGSTONE)
-        return;
-
-    _player->RemoveAurasWithInterruptFlags(AURA_INTERRUPT_FLAG_USE);
-    obj->Use(_player);
-}
-
 void WorldSession::HandleCastSpellOpcode(WorldPacket& recvPacket)
 {
     uint32 spellId;
     recvPacket >> spellId;
-
-    // ignore for remote control state (for player case)
-    Unit* mover = _player->GetMover();
 
     DEBUG_LOG("WORLD: got cast spell packet, spellId - %u, data length = %i",
               spellId, (uint32)recvPacket.size());
@@ -324,33 +297,27 @@ void WorldSession::HandleCastSpellOpcode(WorldPacket& recvPacket)
         return;
     }
 
-    Unit *caster = mover->hasUnitState(UNIT_STAT_CONTROLLED) && mover->GetCharmer()?
-                mover->GetCharmer() : mover;
-    if (caster->GetTypeId() == TYPEID_PLAYER)
+    if (_player->GetTypeId() == TYPEID_PLAYER)
     {
         // not have spell in spellbook or spell passive and not casted by client
-        if (!((Player*)caster)->HasActiveSpell(spellId) || IsPassiveSpell(spellInfo))
+        if (!_player->HasActiveSpell(spellId) || IsPassiveSpell(spellInfo))
         {
-            sLog.outError("World: Player %u casts spell %u which he shouldn't have", caster->GetGUIDLow(), spellId);
+            sLog.outError("World: Player %u casts spell %u which he shouldn't have", _player->GetGUIDLow(), spellId);
             //cheater? kick? ban?
             recvPacket.rpos(recvPacket.wpos());                 // prevent spam at ignore packet
             return;
         }
     }
-    else if (caster->GetTypeId() == TYPEID_UNIT)
+    else if (_player->GetTypeId() == TYPEID_UNIT)
     {
         // not have spell in spellbook or spell passive and not casted by client
-        if (!caster->HasSpell(spellId) || IsPassiveSpell(spellInfo))
+        if (!_player->HasSpell(spellId) || IsPassiveSpell(spellInfo))
         {
             //cheater? kick? ban?
             recvPacket.rpos(recvPacket.wpos());                 // prevent spam at ignore packet
             return;
         }
     }
-
-    // Remove invisibility except Gnomish Cloaking Device, since evidence suggests
-    // it remains until cast finish
-    _player->RemoveAurasWithInterruptFlags(AURA_INTERRUPT_FLAG_ON_CAST_SPELL, 4079);
 
     // client provided targets
     SpellCastTargets targets;
@@ -360,10 +327,27 @@ void WorldSession::HandleCastSpellOpcode(WorldPacket& recvPacket)
     // auto-selection buff level base at target level (in spellInfo)
     if (Unit* target = targets.getUnitTarget())
     {
+        // Cannot cast negative spells on yourself. Handle it here since casting negative
+        // spells on yourself is frequently used within the core itself for certain
+        // mechanics... ZZZ
+        // Some AoE affects have the player as the unit target (TARGET_CASTER_COORDINATES),
+        // we don't need to check them because the targets are defined by the server anyway.
+        // Spells with SPELL_DAMAGE_CLASS_NONE should be castable on self, even if negative.
+        if (target == _player && spellInfo->DmgClass != SPELL_DAMAGE_CLASS_NONE &&
+            !IsAreaOfEffectSpell(spellInfo) && !IsPositiveSpell(spellInfo, _player, target))
+        {
+            recvPacket.rpos(recvPacket.wpos());                 // prevent spam at ignore packet
+            return;
+        }
+
         // if rank not found then function return NULL but in explicit cast case original spell can be casted and later failed with appropriate error message
         if (SpellEntry const *actualSpellInfo = sSpellMgr.SelectAuraRankForLevel(spellInfo, target->getLevel()))
             spellInfo = actualSpellInfo;
     }
+
+    // Remove invisibility except Gnomish Cloaking Device, since evidence suggests
+    // it remains until cast finish
+    _player->RemoveAurasWithInterruptFlags(AURA_INTERRUPT_FLAG_ON_CAST_SPELL, 4079);
 
     _player->m_castingSpell = spellId;
     if (spellInfo->SpellFamilyName == SPELLFAMILY_ROGUE)
@@ -389,6 +373,9 @@ void WorldSession::HandleCancelCastOpcode(WorldPacket& recvPacket)
 
     if (_player->IsNonMeleeSpellCasted(false))
         _player->InterruptNonMeleeSpells(false, spellId);
+
+    if (_player->IsNextSwingSpellCasted())
+        _player->InterruptSpell(CURRENT_MELEE_SPELL);
 }
 
 void WorldSession::HandleCancelAuraOpcode(WorldPacket& recvPacket)
@@ -526,23 +513,6 @@ void WorldSession::HandleCancelChanneling(WorldPacket & recv_data)
             return;
         _player->InterruptSpell(CURRENT_CHANNELED_SPELL);
     }
-}
-
-void WorldSession::HandleTotemDestroyed(WorldPacket& recvPacket)
-{
-    uint8 slotId;
-
-    recvPacket >> slotId;
-
-    // ignore for remote control state
-    if (!_player->IsSelfMover())
-        return;
-
-    if (int(slotId) >= MAX_TOTEM_SLOT)
-        return;
-
-    if (Totem* totem = GetPlayer()->GetTotem(TotemSlot(slotId)))
-        totem->UnSummon();
 }
 
 void WorldSession::HandleSelfResOpcode(WorldPacket & /*recv_data*/)

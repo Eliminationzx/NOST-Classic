@@ -169,7 +169,8 @@ void WorldSession::HandleMoveWorldportAckOpcode()
     // flight fast teleport case
     if (GetPlayer()->GetMotionMaster()->GetCurrentMovementGeneratorType() == FLIGHT_MOTION_TYPE)
     {
-        if (!_player->InBattleGround())
+        // the movement could be expiring so check for destination (ritual of summoning / gm teleport)
+        if (!_player->InBattleGround() && !_player->m_taxi.empty())
         {
             // short preparations to continue flight
             FlightPathMovementGenerator* flight = (FlightPathMovementGenerator*)(GetPlayer()->GetMotionMaster()->top());
@@ -213,7 +214,10 @@ void WorldSession::HandleMoveWorldportAckOpcode()
     // ignores any movement from the transport object. Triggering
     // `SMSG_STANDSTATE_UPDATE' with its current state resets the camera
     // (implemented in `WorldSession::HandleZoneUpdateOpcode').
-    GetPlayer()->SendHeartBeat(true);
+    if (_clientOS == CLIENT_OS_MAC && GetPlayer()->m_movementInfo.HasMovementFlag(MOVEFLAG_ONTRANSPORT))
+    {
+        GetPlayer()->SendHeartBeat(true);
+    }
 }
 
 void WorldSession::HandleMoveTeleportAckOpcode(WorldPacket& recv_data)
@@ -243,8 +247,18 @@ void WorldSession::HandleMoveTeleportAckOpcode(WorldPacket& recv_data)
     WorldLocation const& dest = plMover->GetTeleportDest();
     plMover->TeleportPositionRelocation(dest.coord_x, dest.coord_y, dest.coord_z, dest.orientation);
 
-    // resummon pet
-    plMover->ResummonPetTemporaryUnSummonedIfAny();
+    // resummon pet, if the destination is in another continent instance, let Player::SwitchInstance do it
+    // because the client will request the name for the old pet guid and receive no answer
+    // result would be a pet named "unknown"
+    if (plMover->GetTemporaryUnsummonedPetNumber())
+        if (sWorld.getConfig(CONFIG_BOOL_CONTINENTS_INSTANCIATE) && plMover->GetMap()->IsContinent())
+        {
+            bool transition = false;
+            if (sMapMgr.GetContinentInstanceId(plMover->GetMap()->GetId(), dest.coord_x, dest.coord_y, &transition) == plMover->GetInstanceId())
+                plMover->ResummonPetTemporaryUnSummonedIfAny();
+        }
+        else
+            plMover->ResummonPetTemporaryUnSummonedIfAny();
 
     //lets process all delayed operations on successful teleport
     plMover->ProcessDelayedOperations();
@@ -263,6 +277,7 @@ void WorldSession::HandleMovementOpcodes(WorldPacket & recv_data)
     DEBUG_LOG("WORLD: Recvd %s (%u, 0x%X) opcode", LookupOpcodeName(opcode), opcode, opcode);
 
     Unit *mover = _player->GetMover();
+
     if (mover->GetObjectGuid() != _clientMoverGuid)
         return;
         
@@ -396,21 +411,24 @@ void WorldSession::HandleForceSpeedChangeAckOpcodes(WorldPacket &recv_data)
         {MSG_MOVE_SET_SWIM_BACK_SPEED,  SMSG_FORCE_SWIM_BACK_SPEED_CHANGE,  SMSG_SPLINE_SET_SWIM_BACK_SPEED},
         {MSG_MOVE_SET_TURN_RATE,        SMSG_FORCE_TURN_RATE_CHANGE,        SMSG_SPLINE_SET_TURN_RATE},
     };
-    
-    // Maybe update movespeed using the spline packet. works for move splines
-    // and normal movement, but reverted due to issues in same changeset
-    WorldPacket data(SetSpeed2Opc_table[move_type][0], 31);
-    data << _player->GetMover()->GetPackGUID();
-    data << movementInfo;
-    data << float(newspeed);
-    _player->SendMovementMessageToSet(std::move(data), false);
-    
-    if (!_player->GetMover()->movespline->Finalized())
+
+    if (!_player->IsTaxiFlying()) 
     {
-        WorldPacket splineData(SMSG_MONSTER_MOVE, 31);
-        splineData << _player->GetMover()->GetPackGUID();
-        Movement::PacketBuilder::WriteMonsterMove(*(_player->GetMover()->movespline), splineData);
-        _player->SendMovementMessageToSet(std::move(splineData), false);
+        // Maybe update movespeed using the spline packet. works for move splines
+        // and normal movement, but reverted due to issues in same changeset
+        WorldPacket data(SetSpeed2Opc_table[move_type][0], 31);
+        data << _player->GetMover()->GetPackGUID();
+        data << movementInfo;
+        data << float(newspeed);
+        _player->SendMovementMessageToSet(std::move(data), false);
+
+        if (!_player->GetMover()->movespline->Finalized())
+        {
+            WorldPacket splineData(SMSG_MONSTER_MOVE, 31);
+            splineData << _player->GetMover()->GetPackGUID();
+            Movement::PacketBuilder::WriteMonsterMove(*(_player->GetMover()->movespline), splineData);
+            _player->SendMovementMessageToSet(std::move(splineData), false);
+        }
     }
 }
 
@@ -421,7 +439,7 @@ void WorldSession::HandleSetActiveMoverOpcode(WorldPacket &recv_data)
     ObjectGuid guid;
     recv_data >> guid;
 
-    if (_player->GetMover()->GetObjectGuid() != guid)
+    if (_player->GetMover() && _player->GetMover()->GetObjectGuid() != guid)
     {
         sLog.outError("HandleSetActiveMoverOpcode: incorrect mover guid: mover is %s and should be %s",
                       _player->GetMover()->GetGuidStr().c_str(), guid.GetString().c_str());
@@ -430,7 +448,9 @@ void WorldSession::HandleSetActiveMoverOpcode(WorldPacket &recv_data)
     }
 
     // mover swap after Eyes of the Beast, PetAI::UpdateAI handle the pet's return
-    if (_player->GetPetGuid() == _clientMoverGuid)
+    // Check if we actually have a pet before looking up
+    if (_player->GetPetGuid() && _player->GetPetGuid() == _clientMoverGuid)
+    {
         if (Pet* pet = _player->GetPet())
         {
             pet->clearUnitState(UNIT_STAT_CONTROLLED);
@@ -439,6 +459,7 @@ void WorldSession::HandleSetActiveMoverOpcode(WorldPacket &recv_data)
             if (!pet->IsWithinDistInMap(_player, pet->GetMap()->GetGridActivationDistance()))
                 _player->RemovePet(PET_SAVE_REAGENTS);
         }
+    }
 
     _clientMoverGuid = guid;
 }

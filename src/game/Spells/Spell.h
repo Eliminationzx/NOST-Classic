@@ -264,6 +264,7 @@ class Spell
         void EffectTeleUnitsFaceCaster(SpellEffectIndex eff_idx);
         void EffectLearnSkill(SpellEffectIndex eff_idx);
         void EffectAddHonor(SpellEffectIndex eff_idx);
+        void EffectSpawn(SpellEffectIndex eff_idx);
         void EffectTradeSkill(SpellEffectIndex eff_idx);
         void EffectEnchantItemPerm(SpellEffectIndex eff_idx);
         void EffectEnchantItemTmp(SpellEffectIndex eff_idx);
@@ -322,11 +323,11 @@ class Spell
         void EffectNostalrius(SpellEffectIndex eff_idx);
         void HandleAddTargetTriggerAuras();
 
-        Spell(Unit* caster, SpellEntry const *info, bool triggered, ObjectGuid originalCasterGUID = ObjectGuid(), SpellEntry const* triggeredBy = NULL, Unit* victim = NULL);
+        Spell(Unit* caster, SpellEntry const *info, bool triggered, ObjectGuid originalCasterGUID = ObjectGuid(), SpellEntry const* triggeredBy = NULL, Unit* victim = NULL, SpellEntry const* triggeredByParent = NULL);
         ~Spell();
 
-        void prepare(SpellCastTargets targets, Aura* triggeredByAura = nullptr);
-        void prepare(Aura* triggeredByAura = nullptr);
+        SpellCastResult prepare(SpellCastTargets targets, Aura* triggeredByAura = nullptr, uint32 chance = 0);
+        SpellCastResult prepare(Aura* triggeredByAura = nullptr, uint32 chance = 0);
 
         void cancel();
 
@@ -401,6 +402,7 @@ class Spell
 
         SpellEntry const* m_spellInfo;
         SpellEntry const* m_triggeredBySpellInfo;
+        SpellEntry const* m_triggeredByParentSpellInfo;     // Spell that triggered the spell that triggered this
         int32 m_currentBasePoints[MAX_EFFECT_INDEX];        // cache SpellEntry::CalculateSimpleValue and use for set custom base points
         Item* m_CastItem;
         SpellCastTargets m_targets;
@@ -488,13 +490,15 @@ class Spell
         // For summoning ritual helpers visual spell
         void SetChannelingVisual(bool value) { m_isChannelingVisual = value; }
         bool IsChannelingVisual() const { return m_isChannelingVisual; }
+
+        int32 GetAbsorbedDamage() const { return m_absorbed; }
     protected:
         bool HasGlobalCooldown() const;
         void TriggerGlobalCooldown();
         void CancelGlobalCooldown();
 
         void SendLoot(ObjectGuid guid, LootType loottype, LockType lockType);
-        bool IgnoreItemRequirements() const;                        // some item use spells have unexpected reagent data
+        bool IgnoreItemRequirements() const;                // some item use spells have unexpected reagent data
         void UpdateOriginalCasterPointer();
 
         Unit* m_caster;
@@ -529,6 +533,7 @@ class Spell
         // Channeled spells system
         typedef std::list<SpellAuraHolder *> SpellAuraHolderList;
         SpellAuraHolderList m_channeledHolders;             // aura holders of spell on targets for channeled spells. process in sync with spell
+        SpellAuraHolderList::iterator m_channeledUpdateIterator; // maintain an iterator to the current update element so we can handle removal of multiple auras
 
         // These vars are used in both delayed spell system and modified immediate spell system
         bool m_referencedFromCurrentSpell;                  // mark as references to prevent deleted and access by dead pointers
@@ -559,6 +564,7 @@ class Spell
         int32 m_damage;                                     // Damage   in effects count here
         int32 m_healing;                                    // Healing in effects count here
         int32 m_healthLeech;                                // Health leech in effects for all targets count here
+        int32 m_absorbed;
 
         //******************************************
         // Spell trigger system
@@ -642,6 +648,7 @@ class Spell
 
         uint32 m_spellState;
         uint32 m_timer;
+        uint32 m_triggeredByAuraBasePoints;
 
         float m_castPositionX;
         float m_castPositionY;
