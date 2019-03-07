@@ -63,9 +63,11 @@ class MANGOS_DLL_SPEC SpellAuraHolder
         void _AddSpellAuraHolder();
         void _RemoveSpellAuraHolder();
         void HandleSpellSpecificBoosts(bool apply);
+        void HandleCastOnAuraRemoval() const;
         void CleanupTriggeredSpells();
 
         void setDiminishGroup(DiminishingGroup group) { m_AuraDRGroup = group; }
+        void setDiminishLevel(DiminishingLevels level) { m_AuraDRLevel = level; }
         DiminishingGroup getDiminishGroup() const { return m_AuraDRGroup; }
 
         uint32 GetStackAmount() const { return m_stackAmount; }
@@ -100,9 +102,6 @@ class MANGOS_DLL_SPEC SpellAuraHolder
         // Refresh de buff
         void Refresh(Unit* caster, Unit* target, SpellAuraHolder* pRefreshWithAura);
         bool CanBeRefreshedBy(SpellAuraHolder* other) const;
-        // Proc de buff
-        uint32 spellFirstHitAttackerProcFlags;
-        uint32 spellFirstHitTargetProcFlags;
         // FIN NOSTALRIUS
 
         bool IsPermanent() const { return m_permanent; }
@@ -221,6 +220,7 @@ class MANGOS_DLL_SPEC SpellAuraHolder
 
         AuraRemoveMode m_removeMode:8;                      // Store info for know remove aura reason
         DiminishingGroup m_AuraDRGroup:8;                   // Diminishing
+        DiminishingLevels m_AuraDRLevel:8;
 
         bool m_permanent:1;
         bool m_isPassive:1;
@@ -375,6 +375,7 @@ class MANGOS_DLL_SPEC Aura
         void HandleAuraModAttackPowerPercent(bool apply, bool Real);
         void HandleAuraModRangedAttackPowerPercent(bool apply, bool Real);
         void HandleSpiritOfRedemption(bool apply, bool Real);
+        void HandleAuraAoeCharm(bool apply, bool real);
         void HandleShieldBlockValue(bool apply, bool Real);
         void HandleModSpellCritChanceShool(bool apply, bool Real);
         void HandleAuraRetainComboPoints(bool apply, bool Real);

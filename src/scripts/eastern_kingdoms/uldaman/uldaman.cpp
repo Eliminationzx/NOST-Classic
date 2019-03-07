@@ -57,8 +57,13 @@ bool ProcessEventId_event_awaken_stone_keeper(uint32 eventId, Object* source, Ob
 {
     if (!source || source->GetTypeId() != TYPEID_PLAYER)
         return true;
-    ScriptedInstance* instance = (ScriptedInstance*)((Player*)source)->GetInstanceData();
-    instance->SetData(ULDAMAN_ENCOUNTER_STONE_KEEPERS, IN_PROGRESS);
+
+    if (!target)
+        return true;
+
+    if (ScriptedInstance* instance = dynamic_cast<ScriptedInstance*>(((Player*)source)->GetInstanceData()))
+        instance->SetData(ULDAMAN_ENCOUNTER_STONE_KEEPERS, IN_PROGRESS);
+
     return true;
 }
 
@@ -350,68 +355,9 @@ enum
 
 };
 
-struct EarthenUldamanAI : public ScriptedAI
-{
-    EarthenUldamanAI(Creature* pCreature) : ScriptedAI(pCreature)
-    {
-        Reset();
-    }
-
-    uint32 m_uiFireShield_Timer;
-    uint32 m_uiFlame_Timer;
-
-    void Reset()
-    {
-        m_uiFireShield_Timer      = 3000;
-        m_uiFlame_Timer             = 6600;
-    }
-
-    void Aggro(Unit* pWho)
-    {
-        m_creature->SetInCombatWithZone();
-    }
-
-    void UpdateAI(const uint32 uiDiff)
-    {
-        if (!m_creature->SelectHostileTarget() || !m_creature->getVictim())
-        {
-            return;
-        }
-
-        if (m_uiFireShield_Timer < uiDiff)
-        {
-            if (DoCastSpellIfCan(m_creature, SPELL_FIRE_SHIELD, true) == CAST_OK)
-            {
-                m_uiFireShield_Timer = 15000;
-            }
-        }
-        else
-            m_uiFireShield_Timer -= uiDiff;
-
-        if (m_uiFlame_Timer < uiDiff)
-        {
-            DoCastSpellIfCan(m_creature->getVictim(), SPELL_FLAME_BUFFET);
-            m_uiFlame_Timer = 5700;
-        }
-        else m_uiFlame_Timer -= uiDiff;
-
-        DoMeleeAttackIfReady();
-    }
-};
-
-CreatureAI* GetAI_EarthenUldamanAI(Creature* pCreature)
-{
-    return new EarthenUldamanAI(pCreature);
-}
-
 void AddSC_uldaman()
 {
     Script *newscript;
-
-    newscript = new Script;
-    newscript->Name = "ulda_earthen";
-    newscript->GetAI = &GetAI_EarthenUldamanAI;
-    newscript->RegisterSelf();
 
     newscript = new Script;
     newscript->Name = "mob_annora";

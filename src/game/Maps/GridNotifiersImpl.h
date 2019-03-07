@@ -130,14 +130,17 @@ inline void MaNGOS::DynamicObjectUpdater::VisitHelper(Unit* target)
     if (!target->isAlive() || target->IsTaxiFlying() )
         return;
 
-    if (target->GetTypeId() == TYPEID_UNIT && ((Creature*)target)->IsTotem())
+    if (target->GetTypeId() == TYPEID_UNIT && ((Creature*)target)->IsImmuneToAoe())
         return;
 
     if (!i_dynobject.IsWithinDistInMap(target, i_dynobject.GetRadius()))
         return;
 
     //Check targets for not_selectable unit flag and remove
-    if (target->HasFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_NON_ATTACKABLE | UNIT_FLAG_NOT_SELECTABLE | UNIT_FLAG_OOC_NOT_ATTACKABLE))
+    if (target->HasFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_NON_ATTACKABLE | UNIT_FLAG_NOT_SELECTABLE))
+        return;
+
+    if (i_dynobject.GetCasterGuid().IsPlayer() && target->HasFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_IMMUNE_TO_PLAYER))
         return;
 
     // Evade target
@@ -153,8 +156,18 @@ inline void MaNGOS::DynamicObjectUpdater::VisitHelper(Unit* target)
     if (i_positive && !i_check->IsFriendlyTo(target))
         return;
 
+    // Must check LoS with the target to prevent casting through objects by targeting
+    // the floor. Let creatures cheat
+    if (i_dynobject.GetCasterGuid().IsPlayer() && !i_dynobject.IsWithinLOSInMap(target))
+        return;
+
     if (!i_dynobject.NeedsRefresh(target))
         return;
+
+    // Negative AoE from non flagged players cannot target other players
+    if (Player *attackedPlayer = target->GetCharmerOrOwnerPlayerOrPlayerItself())
+        if (!i_positive && i_check->IsPlayer() && !i_check->IsPvP() && !((Player*)i_check)->IsInDuelWith(attackedPlayer))
+            return;
 
     SpellEntry const *spellInfo = sSpellMgr.GetSpellEntry(i_dynobject.GetSpellId());
     SpellEffectIndex eff_index  = i_dynobject.GetEffIndex();
@@ -167,8 +180,7 @@ inline void MaNGOS::DynamicObjectUpdater::VisitHelper(Unit* target)
             pAi->AttackedBy(i_check);
         i_check->SetInCombatWith(target);
         target->SetInCombatWith(i_check);
-        if (Player *attackedPlayer = target->GetCharmerOrOwnerPlayerOrPlayerItself())
-            i_check->SetContestedPvP(attackedPlayer);
+        i_check->SetContestedPvP(target);
     }
     // Check target immune to spell or aura
     if (target->IsImmuneToSpell(spellInfo, false) || target->IsImmuneToSpellEffect(spellInfo, eff_index, false))
@@ -205,8 +217,11 @@ inline void MaNGOS::DynamicObjectUpdater::VisitHelper(Unit* target)
         holder = CreateSpellAuraHolder(spellInfo, target, i_dynobject.GetCaster());
         PersistentAreaAura* Aur = new PersistentAreaAura(spellInfo, eff_index, NULL, holder, target, i_dynobject.GetCaster());
         holder->AddAura(Aur, eff_index);
-            
-        target->AddSpellAuraHolder(holder);
+
+        // Debuff slots may be full, in which case holder is deleted or holder is not able to
+        // be added for some reason
+        if (!target->AddSpellAuraHolder(holder))
+            holder = nullptr;
     }
 
     if (holder && holder->IsChanneled())

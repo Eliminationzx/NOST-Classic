@@ -40,8 +40,8 @@ INSTANTIATE_SINGLETON_1(GameEventMgr);
 bool GameEventMgr::CheckOneGameEvent(uint16 entry, time_t currenttime) const
 {
     // Get the event information
-    if (mGameEvent[entry].start < currenttime && currenttime < mGameEvent[entry].end &&
-            (currenttime - mGameEvent[entry].start) % (mGameEvent[entry].occurence * MINUTE) < mGameEvent[entry].length * MINUTE)
+    if (mGameEvent[entry].start <= currenttime && currenttime < mGameEvent[entry].end &&
+            (currenttime - mGameEvent[entry].start - (mGameEvent[entry].leapDays * DAY)) % (mGameEvent[entry].occurence * MINUTE) < mGameEvent[entry].length * MINUTE)
         return true;
 
     return false;
@@ -61,11 +61,11 @@ uint32 GameEventMgr::NextCheck(uint16 entry) const
 
     uint32 delay;
     // in event, we return the end of it
-    if ((((currenttime - mGameEvent[entry].start) % (mGameEvent[entry].occurence * 60)) < (mGameEvent[entry].length * 60)))
+    if ((((currenttime - mGameEvent[entry].start - (mGameEvent[entry].leapDays * DAY)) % (mGameEvent[entry].occurence * 60)) < (mGameEvent[entry].length * 60)))
         // we return the delay before it ends
-        delay = (mGameEvent[entry].length * MINUTE) - ((currenttime - mGameEvent[entry].start) % (mGameEvent[entry].occurence * MINUTE));
+        delay = (mGameEvent[entry].length * MINUTE) - ((currenttime - mGameEvent[entry].start - (mGameEvent[entry].leapDays * DAY)) % (mGameEvent[entry].occurence * MINUTE));
     else                                                    // not in window, we return the delay before next start
-        delay = (mGameEvent[entry].occurence * MINUTE) - ((currenttime - mGameEvent[entry].start) % (mGameEvent[entry].occurence * MINUTE));
+        delay = (mGameEvent[entry].occurence * MINUTE) - ((currenttime - mGameEvent[entry].start - (mGameEvent[entry].leapDays * DAY)) % (mGameEvent[entry].occurence * MINUTE));
     // In case the end is before next check
     if (mGameEvent[entry].end  < time_t(currenttime + delay))
         return uint32(mGameEvent[entry].end - currenttime);
@@ -185,7 +185,7 @@ void GameEventMgr::LoadFromDB()
         mGameEvent.resize(max_event_id + 1);
     }
 
-    QueryResult *result = WorldDatabase.Query("SELECT entry,UNIX_TIMESTAMP(start_time),UNIX_TIMESTAMP(end_time),occurence,length,holiday,description,hardcoded,disabled FROM game_event");
+    QueryResult *result = WorldDatabase.Query("SELECT entry,UNIX_TIMESTAMP(start_time),UNIX_TIMESTAMP(end_time),occurence,length,holiday,description,hardcoded,disabled,patch_min,patch_max FROM game_event");
     if (!result)
     {
         mGameEvent.clear();
@@ -208,7 +208,7 @@ void GameEventMgr::LoadFromDB()
             uint16 event_id = fields[0].GetUInt16();
             if (event_id == 0)
             {
-                sLog.outErrorDb("`game_event` game event id (%i) is reserved and can't be used.", event_id);
+                sLog.outErrorDb("Table `game_event` game event id (%i) is reserved and can't be used.", event_id);
                 continue;
             }
 
@@ -223,13 +223,39 @@ void GameEventMgr::LoadFromDB()
 
             if (pGameEvent.length == 0)                         // length>0 is validity check
             {
-                sLog.outErrorDb("`game_event` game event id (%i) have length 0 and can't be used.", event_id);
+                sLog.outErrorDb("Table `game_event` game event id (%i) have length 0 and can't be used.", event_id);
                 continue;
             }
 
             pGameEvent.description  = fields[6].GetCppString();
             pGameEvent.hardcoded    = fields[7].GetUInt8();
             pGameEvent.disabled     = fields[8].GetUInt8();
+            uint8 patch_min         = fields[9].GetUInt8();
+            uint8 patch_max         = fields[10].GetUInt8();
+
+            if ((patch_min > patch_max) || (patch_max > 10))
+            {
+                sLog.outErrorDb("Table `game_event` game event id (%i) has invalid values min_patch=%u, max_patch=%u.", event_id, patch_min, patch_max);
+                sLog.out(LOG_DBERRFIX, "UPDATE game_event SET min_patch=0, max_patch=10 WHERE entry=%u;", event_id);
+                patch_min = 0;
+                patch_max = 10;
+            }
+
+            if (!((sWorld.GetWowPatch() >= patch_min) && (sWorld.GetWowPatch() <= patch_max)))
+                pGameEvent.disabled = 1;
+
+            // Leap days are needed to adjust yearly events
+            if (pGameEvent.occurence == default_year_length && pGameEvent.length < default_year_length)
+            {
+                time_t current = time(0);
+                tm tm_start = *gmtime(&pGameEvent.start);
+                tm tm_current = *gmtime(&current);
+
+                if (tm_current.tm_year > tm_start.tm_year)
+                    for (int i = tm_start.tm_year; i < tm_current.tm_year; i++)
+                        if (isLeapYear(i + 1900))
+                            pGameEvent.leapDays++;
+            }
         }
         while (result->NextRow());
         delete result;
@@ -466,15 +492,16 @@ void GameEventMgr::LoadFromDB()
             newData.spell_id_start = fields[5].GetUInt32();
             newData.spell_id_end = fields[6].GetUInt32();
 
-            if (newData.equipment_id && !sObjectMgr.GetEquipmentInfo(newData.equipment_id) && !sObjectMgr.GetEquipmentInfoRaw(newData.equipment_id))
+            if (newData.equipment_id && !sObjectMgr.GetEquipmentInfo(newData.equipment_id))
             {
-                sLog.outErrorDb("Table `game_event_creature_data` have creature (Guid: %u) with equipment_id %u not found in table `creature_equip_template` or `creature_equip_template_raw`, set to no equipment.", guid, newData.equipment_id);
+                sLog.outErrorDb("Table `game_event_creature_data` have creature (Guid: %u) with equipment_id %u not found in table `creature_equip_template`, set to no equipment.", guid, newData.equipment_id);
                 newData.equipment_id = 0;
             }
 
             if (newData.entry_id && !ObjectMgr::GetCreatureTemplate(newData.entry_id))
             {
-                sLog.outErrorDb("Table `game_event_creature_data` have creature (Guid: %u) with event time entry %u not found in table `creature_template`, set to no 0.", guid, newData.entry_id);
+                if (!sObjectMgr.IsExistingCreatureId(newData.entry_id))
+                    sLog.outErrorDb("Table `game_event_creature_data` have creature (Guid: %u) with event time entry %u not found in table `creature_template`, set to no 0.", guid, newData.entry_id);
                 newData.entry_id = 0;
             }
 
@@ -503,7 +530,7 @@ void GameEventMgr::LoadFromDB()
 
     mGameEventQuests.resize(mGameEvent.size());
 
-    result = WorldDatabase.Query("SELECT quest, event FROM game_event_quest");
+    result = WorldDatabase.PQuery("SELECT quest, event FROM game_event_quest WHERE patch <= %u", sWorld.GetWowPatch());
 
     count = 0;
     if (!result)
@@ -683,12 +710,19 @@ void GameEventMgr::Initialize(MapPersistentState* state)
 uint32 GameEventMgr::Update(ActiveEvents const* activeAtShutdown /*= NULL*/)
 {
     // process hardcoded events
-    for (auto hEvent_iter = mGameEventHardcodedList.begin(); hEvent_iter != mGameEventHardcodedList.end(); ++hEvent_iter)
-        if (!mGameEvent[(*hEvent_iter)->m_eventId].disabled)
-            (*hEvent_iter)->Update();
-
     time_t currenttime = time(nullptr);
     uint32 nextEventDelay = max_ge_check_delay;             // 1 day
+
+    for (auto hEvent_iter = mGameEventHardcodedList.begin(); hEvent_iter != mGameEventHardcodedList.end(); ++hEvent_iter)
+    {
+        if (!mGameEvent[(*hEvent_iter)->m_eventId].disabled)
+        {
+            (*hEvent_iter)->Update();
+            uint32 calcDelay = (*hEvent_iter)->GetNextUpdateDelay();
+            if (calcDelay < nextEventDelay)
+                nextEventDelay = calcDelay;
+        }
+    }
 
     for (uint16 itr = 1; itr < mGameEvent.size(); ++itr)
     {

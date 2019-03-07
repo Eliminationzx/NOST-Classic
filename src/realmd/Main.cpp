@@ -44,6 +44,11 @@
 #include <ace/Acceptor.h>
 #include <ace/SOCK_Acceptor.h>
 
+#ifdef USE_SENDGRID
+#include "MailerService.h"
+#include <curl/curl.h>
+#endif
+
 #ifdef WIN32
 #include "ServiceWin32.h"
 char serviceName[] = "realmd";
@@ -212,6 +217,14 @@ extern int main(int argc, char **argv)
 
     DETAIL_LOG("Using ACE: %s", ACE_VERSION);
 
+#ifdef USE_SENDGRID
+    DETAIL_LOG("Using CURL version %s", curl_version());
+
+    // not checking the SendMail config option here to make sure config reloads will work (in the future?)
+    MailerService mailer;
+    MailerService::set_global_mailer(&mailer);
+#endif
+
 #if defined (ACE_HAS_EVENT_POLL) || defined (ACE_HAS_DEV_POLL)
     ACE_Reactor::instance(new ACE_Reactor(new ACE_Dev_Poll_Reactor(ACE::max_handles(), 1), 1), true);
 #else
@@ -240,6 +253,18 @@ extern int main(int argc, char **argv)
     {
         Log::WaitBeforeContinueIfNeed();
         return 1;
+    }
+
+    // Ensure the table used for geolocking has some data in it, if enabled
+    if (sConfig.GetBoolDefault("GeoLocking", false))
+    {
+        auto result = std::unique_ptr<QueryResult>(LoginDatabase.Query("SELECT 1 FROM geoip LIMIT 1"));
+
+        if (!result)
+        {
+            sLog.outError("The geoip table cannot be empty when geolocking is enabled.");
+            return 1;
+        }
     }
 
     ///- Get the list of realms for the server
@@ -390,7 +415,40 @@ bool StartDB()
         return false;
     }
 
-    sLog.outString("Database: %s", dbstring.c_str() );
+    // Remove password from DB string for log output
+    // format: 127.0.0.1;3306;mangos;mangos;characters
+    // In a properly formatted string, token 4 is the password
+    std::string dbStringLog = dbstring;
+
+    if (std::count(dbStringLog.begin(), dbStringLog.end(), ';') == 4)
+    {
+        // Have correct number of tokens, can replace
+        std::string::iterator start = dbStringLog.end(), end = dbStringLog.end();
+
+        int occurrence = 0;
+        for (std::string::iterator itr = dbStringLog.begin(); itr != dbStringLog.end(); ++itr)
+        {
+            if (*itr == ';')
+                ++occurrence;
+
+            if (occurrence == 3 && start == dbStringLog.end())
+                start = ++itr;
+            else if (occurrence == 4 && end == dbStringLog.end())
+                end = itr;
+
+            if (start != dbStringLog.end() && end != dbStringLog.end())
+                break;
+        }
+
+        dbStringLog.replace(start, end, "*");
+    }
+    else
+    {
+        sLog.outError("Incorrectly formatted database connection string for logon database");
+        return false;
+    }
+
+    sLog.outString("Database: %s", dbStringLog.c_str() );
     if(!LoginDatabase.Initialize(dbstring.c_str()))
     {
         sLog.outError("Cannot connect to database");

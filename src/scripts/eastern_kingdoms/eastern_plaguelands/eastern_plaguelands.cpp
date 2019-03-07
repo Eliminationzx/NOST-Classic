@@ -17,67 +17,18 @@
 /* ScriptData
 SDName: Eastern_Plaguelands
 SD%Complete: 100
-SDComment: Quest support: 5211, 5742. Special vendor Augustus the Touched
+SDComment: Quest support: 5211, 5742.
 SDCategory: Eastern Plaguelands
 EndScriptData */
 
 /* ContentData
 mobs_ghoul_flayer
-npc_augustus_the_touched
 npc_darrowshire_spirit
 npc_tirion_fordring
 EndContentData */
 
 #include "scriptPCH.h"
 
-//id8530 - cannibal ghoul
-//id8531 - gibbering ghoul
-//id8532 - diseased flayer
-
-struct mobs_ghoul_flayerAI : public ScriptedAI
-{
-    mobs_ghoul_flayerAI(Creature* pCreature) : ScriptedAI(pCreature)
-    {
-        Reset();
-    }
-
-    void Reset() { }
-
-    void JustDied(Unit* Killer)
-    {
-        if (Killer->GetTypeId() == TYPEID_PLAYER)
-            m_creature->SummonCreature(11064, 0.0f, 0.0f, 0.0f, 0.0f, TEMPSUMMON_TIMED_DESPAWN, 60000);
-    }
-
-};
-
-CreatureAI* GetAI_mobs_ghoul_flayer(Creature* pCreature)
-{
-    return new mobs_ghoul_flayerAI(pCreature);
-}
-
-/*######
-## npc_augustus_the_touched
-######*/
-
-bool GossipHello_npc_augustus_the_touched(Player* pPlayer, Creature* pCreature)
-{
-    if (pCreature->isQuestGiver())
-        pPlayer->PrepareQuestMenu(pCreature->GetGUID());
-
-    if (pCreature->isVendor() && pPlayer->GetQuestRewardStatus(6164))
-        pPlayer->ADD_GOSSIP_ITEM(GOSSIP_ICON_VENDOR, GOSSIP_TEXT_BROWSE_GOODS, GOSSIP_SENDER_MAIN, GOSSIP_ACTION_TRADE);
-
-    pPlayer->SEND_GOSSIP_MENU(pPlayer->GetGossipTextId(pCreature), pCreature->GetGUID());
-    return true;
-}
-
-bool GossipSelect_npc_augustus_the_touched(Player* pPlayer, Creature* pCreature, uint32 uiSender, uint32 uiAction)
-{
-    if (uiAction == GOSSIP_ACTION_TRADE)
-        pPlayer->SEND_VENDORLIST(pCreature->GetGUID());
-    return true;
-}
 
 /*######
 ## npc_darrowshire_spirit
@@ -243,6 +194,7 @@ struct npc_eris_havenfireAI : public ScriptedAI
     {
         Reset();
         m_creature->CastSpell(m_creature, SPELL_FUFU, true);
+        m_creature->SetCreatureSummonLimit(200);
     }
 
     uint32 Vague;
@@ -477,7 +429,7 @@ struct npc_eris_havenfireAI : public ScriptedAI
     void EchecEvent(Player* pPlayer, bool npcDespawn)
     {
         if (pPlayer && pPlayer->GetQuestStatus(QUEST_BALANCE_OF_LIGHT) == QUEST_STATUS_INCOMPLETE)
-            pPlayer->SetQuestStatus(QUEST_BALANCE_OF_LIGHT, QUEST_STATUS_FAILED);
+            pPlayer->FailQuest(QUEST_BALANCE_OF_LIGHT);
 
         if (rand() % 2)
             DoScriptText(SAY_ERIS_FAIL_1, m_creature);
@@ -486,6 +438,8 @@ struct npc_eris_havenfireAI : public ScriptedAI
 
         if (GameObject* pLight = m_creature->FindNearestGameObject(GO_LIGHT, 100.0f))
             pLight->AddObjectToRemoveList();
+
+        m_creature->CombatStop();
 
         DespawnAll();
 
@@ -601,12 +555,14 @@ struct npc_eris_havenfireAI : public ScriptedAI
             return;
 
         if (pPlayer->GetQuestStatus(QUEST_BALANCE_OF_LIGHT) == QUEST_STATUS_INCOMPLETE)
-            pPlayer->SetQuestStatus(QUEST_BALANCE_OF_LIGHT, QUEST_STATUS_COMPLETE);
+            pPlayer->AreaExploredOrEventHappens(QUEST_BALANCE_OF_LIGHT);
 
         DoScriptText(SAY_ERIS_END, m_creature);
 
         if (GameObject* pLight = m_creature->FindNearestGameObject(GO_LIGHT, 30.0f))
             pLight->AddObjectToRemoveList();
+
+        m_creature->CombatStop();
 
         DespawnAll();
 
@@ -903,204 +859,8 @@ CreatureAI* GetAI_npc_eris_havenfire_peasant(Creature* pCreature)
     return new npc_eris_havenfire_peasantAI(pCreature);
 }
 
-/*****************
-*** npc_nathanos
-******************/
-
-// UPDATE `creature_template` SET `AIName` = '', `ScriptName` = 'npc_nathanos' WHERE `entry` = 11878;
-
 enum
 {
-    SPELL_BACKHAND          = 6253,
-    SPELL_MULTI_SHOT        = 18651,
-    SPELL_PSYCHIC_SCREAM    = 13704,
-    SPELL_SHADOW_SHOOT      = 18649,
-    SPELL_SHOOT             = 16100,
-    SPELL_SUMMON_CONQUERED  = 19096
-};
-
-struct npc_nathanosAI : public ScriptedAI
-{
-    explicit npc_nathanosAI(Creature* pCreature) : ScriptedAI(pCreature)
-    {
-        currAddNb=0;//they don't despawn on reset.
-        Reset();
-    }
-
-    uint32 Backhand_Timer;
-    uint32 MultiShot_Timer;
-    uint32 PsychicScream_Timer;
-    uint32 ShadowShoot_Timer;
-    uint32 Shoot_Timer;
-    uint8 currAddNb;
-    uint8 maxAdds;
-
-    bool Checked;
-    uint32 CheckHealth_Timer;
-    uint64 PlayerGuids[40];
-    uint32 PlayerHealth[40];
-
-    void Reset()
-    {
-        Backhand_Timer = 8000;
-        MultiShot_Timer = 10000;
-        PsychicScream_Timer = 12000;
-        ShadowShoot_Timer = 6000;
-        Shoot_Timer = 4000;
-
-        Checked = false;
-        CheckHealth_Timer = 1000;
-
-        for (int i = 0; i < 40; i++)
-        {
-            PlayerGuids[i] = 0;
-            PlayerHealth[i] = 0;
-        }
-    }
-
-    void Aggro(Unit* pWho)
-    {
-        Map::PlayerList const &pl = m_creature->GetMap()->GetPlayers();
-        for (Map::PlayerList::const_iterator it = pl.begin(); it != pl.end(); ++it)
-        {
-            Player* currPlayer = it->getSource();
-            if (currPlayer && m_creature->IsWithinDist(currPlayer, 45.0f, false))
-            {
-                if (currPlayer->isGameMaster())
-                    continue;
-
-                m_creature->AddThreat(currPlayer);
-                m_creature->SetInCombatWith(currPlayer);
-                currPlayer->SetInCombatWith(m_creature);
-            }
-        }
-    }
-
-    void FillPlayerHealthList()
-    {
-        for (int i = 0; i < 40; i++)
-        {
-            PlayerGuids[i] = 0;
-            PlayerHealth[i] = 0;
-        }
-
-        ThreatList const& tList = m_creature->getThreatManager().getThreatList();
-        for (ThreatList::const_iterator i = tList.begin(); i != tList.end(); ++i)
-        {
-            if (Unit* pPlayer = m_creature->GetMap()->GetPlayer((*i)->getUnitGuid()))
-            {
-                for (int j = 0; j < 40; j++)
-                {
-                    if (PlayerGuids[j] == 0)
-                    {
-                        PlayerGuids[j] = (*i)->getUnitGuid();
-                        PlayerHealth[j] = pPlayer->GetHealth();
-                        break;
-                    }
-                }
-            }
-        }
-    }
-
-    bool IsPlayerHealed()
-    {
-        ThreatList const& tList = m_creature->getThreatManager().getThreatList();
-        if (tList.empty())
-            return false;
-
-        for (ThreatList::const_iterator i = tList.begin(); i != tList.end(); ++i)
-        {
-            for (int j = 0; j < 40; j++)
-            {
-                if (PlayerGuids[j] == (*i)->getUnitGuid())
-                {
-                    Unit* pPlayer = m_creature->GetMap()->GetPlayer((*i)->getUnitGuid());
-
-                    if (pPlayer && (pPlayer->GetHealth() > PlayerHealth[j]))
-                        return true;
-                }
-            }
-        }
-
-        return false;
-    }
-    void JustSummoned(Creature*)
-    {
-        currAddNb++;
-    }
-    void SummonedCreatureJustDied(Creature* pSummoned)
-    {
-        currAddNb--;
-    }
-
-    void UpdateAI(const uint32 diff)
-    {
-        if (!m_creature->SelectHostileTarget() || !m_creature->getVictim())
-            return;
-
-        if (!Checked)
-        {
-            FillPlayerHealthList();
-            Checked = true;
-        }
-        else
-        {
-            if (currAddNb<50 && IsPlayerHealed())
-                DoCastSpellIfCan(m_creature, SPELL_SUMMON_CONQUERED);
-            Checked = false;
-        }
-
-        if (Backhand_Timer < diff)
-        {
-            if (DoCastSpellIfCan(m_creature->getVictim(), SPELL_BACKHAND) == CAST_OK)
-                Backhand_Timer = urand(8000, 12000);
-        }
-        else
-            Backhand_Timer -= diff;
-
-        if (MultiShot_Timer < diff)
-        {
-            if (DoCastSpellIfCan(m_creature->getVictim(), SPELL_MULTI_SHOT) == CAST_OK)
-                MultiShot_Timer = urand(8000, 15000);
-        }
-        else
-            MultiShot_Timer -= diff;
-
-        if (PsychicScream_Timer < diff)
-        {
-            if (DoCastSpellIfCan(m_creature, SPELL_PSYCHIC_SCREAM) == CAST_OK)
-                PsychicScream_Timer = urand(10000, 20000);
-        }
-        else
-            PsychicScream_Timer -= diff;
-
-        if (ShadowShoot_Timer < diff)
-        {
-            if (DoCastSpellIfCan(m_creature->getVictim(), SPELL_SHADOW_SHOOT) == CAST_OK)
-                ShadowShoot_Timer = urand(8000, 15000);
-        }
-        else
-            ShadowShoot_Timer -= diff;
-
-        if (Shoot_Timer < diff)
-        {
-            if (DoCastSpellIfCan(m_creature->getVictim(), SPELL_SHOOT) == CAST_OK)
-                Shoot_Timer = urand(4000, 6000);
-        }
-        else
-            Shoot_Timer -= diff;
-
-        DoMeleeAttackIfReady();
-    }
-};
-CreatureAI* GetAI_npc_nathanos(Creature* pCreature)
-{
-    return new npc_nathanosAI(pCreature);
-}
-enum
-{
-    QUEST_THE_SCARLET_ORACLE_DEMETRIA   = 6148,
-    NPC_DEMETRIA                        = 12339,
     NPC_SCARLET_TROOPER                 = 12352,
     SPELL_MIND_BLAST                    = 17194,
     SPELL_DOMINATE_MIND                 = 14515,
@@ -1112,15 +872,6 @@ enum
     SPELL_SHADOWFORM                    = 16592
 };
 
-bool QuestAccept_npc_nathanos(Player* pPlayer, Creature* pCreature, const Quest* pQuest)
-{
-    if (pQuest->GetQuestId() == QUEST_THE_SCARLET_ORACLE_DEMETRIA)
-    {
-        Creature* demetria = pCreature->SummonCreature(NPC_DEMETRIA, 1629.34f, -5492.59f, 100.728f, 1.08793f, TEMPSUMMON_CORPSE_DESPAWN, 0);
-        demetria->SetActiveObjectState(true);
-    }
-    return true;
-}
 struct npc_demetriaAI : public ScriptedAI
 {
     npc_demetriaAI(Creature* pCreature) : ScriptedAI(pCreature)
@@ -1375,6 +1126,7 @@ struct npc_darrowshire_triggerAI : public ScriptedAI
     {
         DefenderFaction = 113;  // Faction Escortee : heal possible mais... n'attaque pas à vue malgré les bons flags :/
         Reset();
+        m_creature->SetCreatureSummonLimit(200);
     }
 
     uint32 PhaseStep;
@@ -2115,17 +1867,6 @@ void AddSC_eastern_plaguelands()
     Script *newscript;
 
     newscript = new Script;
-    newscript->Name = "mobs_ghoul_flayer";
-    newscript->GetAI = &GetAI_mobs_ghoul_flayer;
-    newscript->RegisterSelf();
-
-    newscript = new Script;
-    newscript->Name = "npc_augustus_the_touched";
-    newscript->pGossipHello = &GossipHello_npc_augustus_the_touched;
-    newscript->pGossipSelect = &GossipSelect_npc_augustus_the_touched;
-    newscript->RegisterSelf();
-
-    newscript = new Script;
     newscript->Name = "npc_darrowshire_spirit";
     newscript->GetAI = &GetAI_npc_darrowshire_spirit;
     newscript->pGossipHello = &GossipHello_npc_darrowshire_spirit;
@@ -2148,12 +1889,6 @@ void AddSC_eastern_plaguelands()
     newscript = new Script;
     newscript->Name = "npc_eris_havenfire_peasant";
     newscript->GetAI = &GetAI_npc_eris_havenfire_peasant;
-    newscript->RegisterSelf();
-
-    newscript = new Script;
-    newscript->Name = "npc_nathanos";
-    newscript->GetAI = &GetAI_npc_nathanos;
-    newscript->pQuestAcceptNPC = &QuestAccept_npc_nathanos; //Alita
     newscript->RegisterSelf();
 
     newscript = new Script;

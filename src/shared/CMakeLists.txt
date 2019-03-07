@@ -91,9 +91,17 @@ set (shared_SRCS
 	Database/SqlOperations.cpp
 	Database/SqlPreparedStatement.cpp
 	Database/SQLStorage.cpp
-
 )
 
+if(USE_LIBCURL)
+  set (shared_SRCS 
+    ${shared_SRCS}
+	SendgridMail.h
+	MailerService.h
+	SendgridMail.cpp
+	MailerService.cpp
+  )
+endif()
 
 # Exclude Win32 files
 if(WIN32)
@@ -152,3 +160,9 @@ add_library(shared STATIC
   ${shared_SRCS}
 )
 
+if(UNIX)
+  find_package(Threads)
+  target_link_libraries(shared ${ACE_LIBRARIES} ${CMAKE_THREAD_LIBS_INIT})
+endif(UNIX)
+
+SET_TARGET_PROPERTIES (shared PROPERTIES FOLDER "Game Libs")

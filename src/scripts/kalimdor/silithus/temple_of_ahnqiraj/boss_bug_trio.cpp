@@ -56,6 +56,12 @@ struct boss_bug_trioAI : public ScriptedAI
         m_uiEvadeCheckTimer = 2500;
     }
 
+    void JustReachedHome() override
+    {
+        if (m_pInstance)
+            m_pInstance->SetData(TYPE_BUG_TRIO, FAIL);
+    }
+
     void EnterEvadeMode() override
     {
         // If somehow a raid wipes during devour phase, restore normal speed/behavior
@@ -67,7 +73,7 @@ struct boss_bug_trioAI : public ScriptedAI
     {
         // Reset the slain bug count on pull
         if (m_pInstance)
-            m_pInstance->SetData(TYPE_BUG_TRIO, FAIL);
+            m_pInstance->SetData(TYPE_BUG_TRIO, IN_PROGRESS);
     }
 
     void MoveInLineOfSight(Unit* pWho) override
@@ -83,6 +89,7 @@ struct boss_bug_trioAI : public ScriptedAI
     void JustDied(Unit* /*pKiller*/) override
     {
         // If another bug is still alive, prevent looting and trigger corpse despawn
+        m_pInstance->SetData(TYPE_BUG_TRIO, SPECIAL);
         if (m_pInstance->GetData(TYPE_BUG_TRIO) != DONE)
         {
             m_creature->SetLootRecipient(NULL);
@@ -97,8 +104,6 @@ struct boss_bug_trioAI : public ScriptedAI
             if (Creature* pVem = m_pInstance->GetSingleCreatureFromStorage(NPC_VEM))
                 if (boss_bug_trioAI* pFakerAI = dynamic_cast<boss_bug_trioAI*>(pVem->AI()))
                     pFakerAI->TriggerDevour(m_creature);
-
-            m_pInstance->SetData(TYPE_BUG_TRIO, SPECIAL);
         }
     }
 
@@ -208,7 +213,7 @@ struct boss_kriAI : public boss_bug_trioAI
     void JustDied(Unit* pKiller) override
     {
         // Spawn Poison Cloud on death
-        DoCastSpellIfCan(m_creature, SPELL_SUMMON_CLOUD, CAST_TRIGGERED);
+        DoCastSpellIfCan(m_creature, SPELL_SUMMON_CLOUD, CF_TRIGGERED);
         boss_bug_trioAI::JustDied(pKiller);
     }
 
@@ -320,7 +325,7 @@ struct boss_yaujAI : public boss_bug_trioAI
                 if (DoCastSpellIfCan(m_creature, SPELL_HEAL) == CAST_OK)
                     m_uiHealTimer = 12000;
             }
-            else if (Unit* pTarget = DoSelectLowestHpFriendly(100.0f))
+            else if (Unit* pTarget = m_creature->DoSelectLowestHpFriendly(100.0f))
             {
                 if (DoCastSpellIfCan(pTarget, SPELL_HEAL) == CAST_OK)
                     m_uiHealTimer = 12000;
@@ -364,7 +369,7 @@ struct boss_vemAI : public boss_bug_trioAI
     void JustDied(Unit* pKiller) override
     {
         // Enrage the other bugs on death
-        DoCastSpellIfCan(m_creature, SPELL_VENGEANCE, CAST_TRIGGERED);
+        DoCastSpellIfCan(m_creature, SPELL_VENGEANCE, CF_TRIGGERED);
         boss_bug_trioAI::JustDied(pKiller);
     }
 

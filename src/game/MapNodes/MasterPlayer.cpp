@@ -57,8 +57,10 @@ void MasterPlayer::LoadPlayer(Player* player)
 
 void MasterPlayer::SaveToDB()
 {
+    CharacterDatabase.BeginTransaction(GetGUIDLow());
     SaveActions();
     SaveMails();
+    CharacterDatabase.CommitTransaction();
 }
 
 void MasterPlayer::Update()
@@ -129,7 +131,7 @@ void MasterPlayer::SaveMails()
                     stmt.PExecute(itr2->item_guid);
             }
 
-            if (m->itemTextId)
+            if (m->itemTextId && m->stationery != MAIL_STATIONERY_DEFAULT)
             {
                 SqlStatement stmt = CharacterDatabase.CreateStatement(deleteItemText, "DELETE FROM item_text WHERE id = ?");
                 stmt.PExecute(m->itemTextId);
@@ -211,7 +213,7 @@ void MasterPlayer::UpdateNextMailTimeAndUnreads()
             if (!m_nextMailDelivereTime || m_nextMailDelivereTime > (*itr)->deliver_time)
                 m_nextMailDelivereTime = (*itr)->deliver_time;
         }
-        else if (((*itr)->checked & MAIL_CHECK_MASK_READ) == 0)
+        else if (((*itr)->checked & MAIL_CHECK_MASK_READ) == 0 && cTime < (*itr)->expire_time)
             ++unReadMails;
     }
 }
@@ -257,6 +259,7 @@ void MasterPlayer::LoadMailedItems(QueryResult *result)
         if (!proto)
         {
             sLog.outError("Player %u has unknown item_template (ProtoType) in mailed items(GUID: %u template: %u) in mail (%u), deleted.", GetGUIDLow(), item_guid_low, item_template, mail->messageID);
+            CharacterDatabase.PExecute("INSERT INTO character_deleted_items (player_guid, item_entry, stack_count) VALUES ('%u', '%u', '%u')", GetGUIDLow(), item_template, fields[2].GetUInt32());
             CharacterDatabase.PExecute("DELETE FROM mail_items WHERE item_guid = '%u'", item_guid_low);
             CharacterDatabase.PExecute("DELETE FROM item_instance WHERE guid = '%u'", item_guid_low);
             continue;

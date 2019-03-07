@@ -420,7 +420,8 @@ struct npc_weegli_blastfuseAI : public ScriptedAI
                         pBoom->UseDoorOrButton(explosiveGUID);
                     }
                     uint64 EndDoorGUID = pInstance->GetData64(GO_END_DOOR);
-                    pInstance->DoUseDoorOrButton(EndDoorGUID);
+                    pInstance->DoUseDoorOrButton(EndDoorGUID, 0, true);
+                    pInstance->SetData(EVENT_END_DOOR, DONE);
                     if (Creature* pChief = m_creature->GetMap()->GetCreature(pInstance->GetData64(ENTRY_UKORZ)))
                         DoScriptText(SAY_CHIEF_UKORZ_DOOR, pChief);
                     RunAfterExplosion2();
@@ -564,17 +565,17 @@ void AddSC_go_shallow_grave()
 
 enum zumrahConsts
 {
-    ZUMRAH_ID = 7271,
-    ZUMRAH_HOSTILE_FACTION = 37
-};
+    NPC_WITCH_DOCTOR_ZUMRAH = 7271,
+    ZUMRAH_HOSTILE_FACTION  = 37,
 
-#define SAY_ZUMRAH_TRIGGER -1900163
-#define SAY_ZUMRAH_YELL    -1900164
-#define SAY_ZUMRAH_KILLED  -1900165
+    SAY_ZUMRAH_TRIGGER      = 3622,
+    SAY_ZUMRAH_YELL         = 6221,
+    SAY_ZUMRAH_KILLED       = 6222
+};
 
 bool OnTrigger_at_zumrah(Player* pPlayer, const AreaTriggerEntry *at)
 {
-    Creature* pZumrah = pPlayer->FindNearestCreature(ZUMRAH_ID, 30.0f);
+    Creature* pZumrah = pPlayer->FindNearestCreature(NPC_WITCH_DOCTOR_ZUMRAH, 30.0f);
 
     if (!pZumrah)
         return false;
@@ -591,10 +592,14 @@ bool OnTrigger_at_zumrah(Player* pPlayer, const AreaTriggerEntry *at)
 /******************/
 struct ZumRahAI : public ScriptedAI
 {
-    ZumRahAI(Creature* pCreature) : ScriptedAI(pCreature)
+    // World of Warcraft Client Patch 1.12.0 (2006-08-22)
+    // - Witch Doctor Zum'rah will no longer call as many Zul'Farrak Zombies to his aid when aggroed.
+    ZumRahAI(Creature* pCreature) : ScriptedAI(pCreature), m_uiMaxZombies(sWorld.GetWowPatch() < WOW_PATCH_112 ? urand(2, 6) : 2)
     {
         Reset();
     }
+
+    uint8 const m_uiMaxZombies;
 
     uint32 m_uiGraveTimer;
     uint32 m_uiWardTimer;
@@ -604,7 +609,7 @@ struct ZumRahAI : public ScriptedAI
     bool isHealed;
     uint32 m_uiZombiesTimer;
 
-    void Reset()
+    void Reset() override
     {
         zombies = false;
         isHealed = false;
@@ -615,23 +620,24 @@ struct ZumRahAI : public ScriptedAI
         m_uiWardTimer  = 3000;
     }
 
-    void KilledUnit(Unit* pVictim)
+    void KilledUnit(Unit* pVictim) override
     {
         DoScriptText(SAY_ZUMRAH_KILLED, m_creature);
         ScriptedAI::KilledUnit(pVictim);
     }
 
-    void JustDied(Unit* pKiller)
+    void JustDied(Unit* pKiller) override
     {
     }
 
-    void Aggro(Unit* pWho)
+    void Aggro(Unit* pWho) override
     {
+        m_creature->RemoveFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_IMMUNE_TO_PLAYER);
         m_creature->SetInCombatWithZone();
         DoScriptText(SAY_ZUMRAH_YELL, m_creature);
     }
 
-    void UpdateAI(const uint32 uiDiff)
+    void UpdateAI(const uint32 uiDiff) override
     {
         if (!m_creature->SelectHostileTarget() || !m_creature->getVictim())
             return;
@@ -687,18 +693,22 @@ struct ZumRahAI : public ScriptedAI
             GetGameObjectListWithEntryInGrid(m_GraveList, m_creature, 128403, 100.0f);
             for (std::list<GameObject*>::iterator it = m_GraveList.begin(); it != m_GraveList.end(); ++it)
             {
-
-                if ((*it)->GetGoState() != 1 || (*it)->getLootState() != 1 || (*it)->GetRespawnTime() != 0)
+                GameObject *go = *it;
+                if (go->GetGoState() != 1 || go->getLootState() != 1 || go->GetRespawnTime() != 0)
                     continue;
 
-                (*it)->UseDoorOrButton((*it)->GetGUID());
-                Creature* undead = m_creature->SummonCreature(7286, (*it)->GetPositionX(),
-                                   (*it)->GetPositionY(),
-                                   (*it)->GetPositionZ(), 5.93f, TEMPSUMMON_CORPSE_DESPAWN, 60000);
-                undead->AI()->AttackStart(m_creature->getVictim());
+                go->UseDoorOrButton(go->GetGUID());
+                if (Creature* undead = m_creature->SummonCreature(7286, go->GetPositionX(),
+                    go->GetPositionY(),
+                    go->GetPositionZ(), 5.93f, TEMPSUMMON_CORPSE_DESPAWN, 60000))
+                {
+                    if (undead->AI())
+                        undead->AI()->AttackStart(m_creature->getVictim());
+                }
+
                 m_uiGraveTimer = 18000;
                 zombieNumber++;
-                if (zombieNumber == 2)
+                if (zombieNumber >= m_uiMaxZombies)
                     return;
             }
             m_GraveList.clear();
@@ -894,96 +904,6 @@ CreatureAI* GetAI_alarmOMatic(Creature* pCreature)
     return new alarmOMaticAI(pCreature);
 }
 
-
-enum
-{
-    SPELL_SHOOT_FURY        =   15547, /* Distance spell */
-    SPELL_HEX               =   11641,
-    SPELL_DISMOUNT_SHOT     =   18395, /* Distance spell */
-};
-
-struct SandfuryShadowhunterAI : public ScriptedAI
-{
-    SandfuryShadowhunterAI(Creature* pCreature) : ScriptedAI(pCreature)
-    {
-        Reset();
-    }
-
-    bool   m_bIsOutOfRange;
-    uint32 m_uiShoot_Timer;
-    uint32 m_uiHex_Timer;
-
-    void Reset()
-    {
-        m_creature->clearUnitState(UNIT_STAT_ROOT);
-        m_bIsOutOfRange           = false;
-        m_uiShoot_Timer           = 3000;
-        m_uiHex_Timer             = 6600;
-    }
-
-    void Aggro(Unit* pWho)
-    {
-        m_creature->SetInCombatWithZone();
-    }
-
-    void UpdateAI(const uint32 uiDiff)
-    {
-        if (!m_creature->SelectHostileTarget() || !m_creature->getVictim())
-            return;
-
-        /** Techniques changes depending on the distance of his target */
-        if (m_creature->GetDistance2d(m_creature->getVictim()) > 5.0f &&
-                m_creature->GetDistance2d(m_creature->getVictim()) < 31.0f)
-        {
-            m_creature->addUnitState(UNIT_STAT_ROOT);
-            m_bIsOutOfRange = true;
-        }
-        else
-        {
-            m_creature->clearUnitState(UNIT_STAT_ROOT);
-            m_bIsOutOfRange = false;
-        }
-
-        if (m_uiHex_Timer < uiDiff)
-        {
-            Unit* target = NULL;
-            target = m_creature->SelectAttackingTarget(ATTACKING_TARGET_RANDOM, 0);
-
-            if (DoCastSpellIfCan(target, SPELL_HEX) == CAST_OK)
-                m_uiHex_Timer = urand(6600, 6900);
-        }
-        else
-            m_uiHex_Timer -= uiDiff;
-
-        switch (m_bIsOutOfRange)
-        {
-            case 0:
-                break;
-            case 1:
-                if (m_uiShoot_Timer < uiDiff)
-                {
-                    /** Classic shoot */
-                    if (!m_creature->getVictim()->IsMounted())
-                        DoCastSpellIfCan(m_creature->getVictim(), SPELL_SHOOT_FURY);
-                    else
-                        /** Dismount shot if the player is mounted */
-                        DoCastSpellIfCan(m_creature->getVictim(), SPELL_DISMOUNT_SHOT);
-
-                    m_uiShoot_Timer = 3000;
-                }
-                else
-                    m_uiShoot_Timer -= uiDiff;
-                break;
-        }
-        DoMeleeAttackIfReady();
-    }
-};
-
-CreatureAI* GetAI_SandfuryShadowhunterAI(Creature* pCreature)
-{
-    return new SandfuryShadowhunterAI(pCreature);
-}
-
 void AddSC_at_zumrah()
 {
     Script* pNewScript;
@@ -1002,11 +922,6 @@ void AddSC_zulfarrak()
     AddSC_go_troll_cage();
 
     Script *newscript;
-
-    newscript = new Script;
-    newscript->Name = "zf_sandfury_shadow_hunter";
-    newscript->GetAI = &GetAI_SandfuryShadowhunterAI;
-    newscript->RegisterSelf();
 
     newscript = new Script;
     newscript->Name = "alarm_o_matic";

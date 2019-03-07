@@ -22,7 +22,6 @@
 #include "ScriptedFollowerAI.h"
 #include "ScriptedEscortAI.h"
 #include "ScriptedGossip.h"
-#include "ScriptedGuardAI.h"
 #include "GridSearchers.h"
 #include "ScriptedInstance.h"
 #include "SpellAuras.h"
@@ -33,9 +32,6 @@
 #include "World.h"
 #include "Weather.h"
 #include "TotemAI.h"
-
-// Texte nostalrius (nostalrius_string)
-#define NOST_TEXT(id) (id+2000010000)
 
 #ifdef _WIN32
 #include <windows.h>

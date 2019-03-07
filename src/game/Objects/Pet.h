@@ -90,10 +90,11 @@ struct PetSpell
 
 enum ActionFeedback
 {
-    FEEDBACK_NONE            = 0,
+    FEEDBACK_PET_NONE        = 0,   // custom, not to be sent
     FEEDBACK_PET_DEAD        = 1,
     FEEDBACK_NOTHING_TO_ATT  = 2,
-    FEEDBACK_CANT_ATT_TARGET = 3
+    FEEDBACK_CANT_ATT_TARGET = 3,
+    FEEDBACK_NO_PATH_TO      = 4
 };
 
 enum PetTalk
@@ -260,6 +261,7 @@ class MANGOS_DLL_SPEC Pet : public Creature
 
         bool    m_removed;                                  // prevent overwrite pet state in DB at next Pet::Update if pet already removed(saved)
     protected:
+        uint32  m_focusTimer;
         uint32  m_happinessTimer;
         uint32  m_loyaltyTimer;
         PetType m_petType;
@@ -269,6 +271,7 @@ class MANGOS_DLL_SPEC Pet : public Creature
         uint64  m_auraUpdateMask;
         bool    m_loading;
         CharacterPetCache* m_pTmpCache;
+        bool    m_unSummoned;                               // If this pet has already been unsummoned
 
     private:
         bool m_enabled;

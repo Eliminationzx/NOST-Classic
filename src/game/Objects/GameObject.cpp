@@ -167,6 +167,10 @@ bool GameObject::Create(uint32 guidlow, uint32 name_id, Map *map, float x, float
 
     SetObjectScale(goinfo->size);
 
+#if SUPPORTED_CLIENT_BUILD < CLIENT_BUILD_1_12_1
+    SetUInt32Value(GAMEOBJECT_TIMESTAMP, (uint32)time(nullptr));
+#endif
+
     SetFloatValue(GAMEOBJECT_POS_X, x);
     SetFloatValue(GAMEOBJECT_POS_Y, y);
     SetFloatValue(GAMEOBJECT_POS_Z, z);
@@ -190,6 +194,7 @@ bool GameObject::Create(uint32 guidlow, uint32 name_id, Map *map, float x, float
     SetGoType(GameobjectTypes(goinfo->type));
 
     SetGoAnimProgress(animprogress);
+    SetName(goinfo->name);
 
     //Notify the map's instance data.
     //Only works if you create the object in it, not if it is moves to that map.
@@ -212,8 +217,13 @@ public:
     {
         if (!i_trap->CanSeeInWorld(u))
             return false;
+
+        if (i_trapOwner->IsPlayer() && u->IsPlayer() && !i_trapOwner->IsPvP() && !i_trapOwner->ToPlayer()->IsInDuelWith(u->ToPlayer()))
+            return false;
+
         bool _isTotem = u->GetTypeId() == TYPEID_UNIT && ((Creature*)u)->IsTotem();
-        if (u->isAlive() && i_trap->IsWithinDistInMap(u, _isTotem ? i_range / 3.0f : i_range) && i_trapOwner->_IsValidAttackTarget(u))
+        if (u->isAlive() && i_trap->IsWithinDistInMap(u, _isTotem ? i_range / 3.0f : i_range) && i_trapOwner->IsValidAttackTarget(u) &&
+            (u->isInCombat() || i_trapOwner->IsHostileTo(u)))
         {
             i_range = i_trap->GetDistance(u);
             return true;
@@ -274,7 +284,7 @@ void GameObject::Update(uint32 update_diff, uint32 /*p_time*/)
 
 			    // Play splash sound
 			    PlayDistanceSound(3355);
-                            SendGameObjectCustomAnim(GetObjectGuid());
+                            SendGameObjectCustomAnim();
                         }
 
                         m_lootState = GO_READY;             // can be successfully open with some chance
@@ -317,7 +327,12 @@ void GameObject::Update(uint32 update_diff, uint32 /*p_time*/)
                             //we need to open doors if they are closed (add there another condition if this code breaks some usage, but it need to be here for battlegrounds)
                             if (GetGoState() != GO_STATE_READY)
                                 ResetDoorOrButton();
-                        //flags in AB are type_button and we need to add them here so no break!
+                            //flags in AB are type_button and we need to add them here so no break!
+                        case GAMEOBJECT_TYPE_CHEST:
+                        case GAMEOBJECT_TYPE_SPELL_FOCUS:
+                        case GAMEOBJECT_TYPE_GOOBER:
+                            // Respawn linked trap if any exists
+                            RespawnLinkedGameObject();
                         default:
                             if (!m_spawnedByDefault)        // despawn timer
                             {
@@ -333,9 +348,7 @@ void GameObject::Update(uint32 update_diff, uint32 /*p_time*/)
                                 m_respawnDelayTime = -1; //spawn animation
                                 GetMap()->Add(this);
                                 m_respawnDelayTime = 0;
-                                WorldPacket data(SMSG_GAMEOBJECT_RESET_STATE, 8);
-                                data << GetObjectGuid();
-                                SendObjectMessageToSet(&data,true);
+                                SendGameObjectReset();
                             }
                             else
                                 GetMap()->Add(this);
@@ -443,7 +456,8 @@ void GameObject::Update(uint32 update_diff, uint32 /*p_time*/)
                             case 4472:
                             case 4491:
                             case 6785:
-                                SendGameObjectCustomAnim(GetObjectGuid());
+                            case 6747: //sapphiron birth
+                                SendGameObjectCustomAnim();
                                 break;
                         }
                     }
@@ -736,6 +750,10 @@ void GameObject::getFishLoot(Loot *fishloot, Player* loot_owner)
     uint32 zone, subzone;
     GetZoneAndAreaId(zone, subzone);
 
+    // Don't allow fishing in hidden wetlands lake
+    if (subzone == 11 && loot_owner->IsWithinDist2d(-4074.74f, -1315.79f, 100.0f))
+        return;
+
     // if subzone loot exist use it
     if (!fishloot->FillLoot(subzone, LootTemplates_Fishing, loot_owner, true, (subzone != zone)) && subzone != zone)
         // else use zone loot (if zone diff. from subzone, must exist in like case)
@@ -777,7 +795,8 @@ void GameObject::SaveToDB(uint32 mapid)
     data.rotation1 = GetFloatValue(GAMEOBJECT_ROTATION + 1);
     data.rotation2 = GetFloatValue(GAMEOBJECT_ROTATION + 2);
     data.rotation3 = GetFloatValue(GAMEOBJECT_ROTATION + 3);
-    data.spawntimesecs = m_spawnedByDefault ? (int32)m_respawnDelayTime : -(int32)m_respawnDelayTime;
+    data.spawntimesecsmin = m_spawnedByDefault ? (int32)m_respawnDelayTime : -(int32)m_respawnDelayTime;
+    data.spawntimesecsmax = m_spawnedByDefault ? (int32)m_respawnDelayTime : -(int32)m_respawnDelayTime;
     data.animprogress = GetGoAnimProgress();
     data.go_state = GetGoState();
     data.spawnFlags = m_isActiveObject ? SPAWN_FLAG_ACTIVE : 0;
@@ -796,10 +815,14 @@ void GameObject::SaveToDB(uint32 mapid)
        << GetFloatValue(GAMEOBJECT_ROTATION + 1) << ", "
        << GetFloatValue(GAMEOBJECT_ROTATION + 2) << ", "
        << GetFloatValue(GAMEOBJECT_ROTATION + 3) << ", "
-       << m_respawnDelayTime << ", "
+       << data.spawntimesecsmin << ", " // PRESERVE SPAWNED BY DEFAULT
+       << data.spawntimesecsmax << ", "
        << uint32(GetGoAnimProgress()) << ", "
-       << uint32(GetGoState()) << ","
-       << m_isActiveObject << ")";
+       << uint32(GetGoState()) << ", "
+       << m_isActiveObject << ", "
+       << m_visibilityModifier << ", "
+       << 0 << ", "  // patch_min
+       << 10 << ")"; // patch_max
 
     WorldDatabase.BeginTransaction();
     WorldDatabase.PExecuteLog("DELETE FROM gameobject WHERE guid = '%u'", GetGUIDLow());
@@ -838,7 +861,7 @@ bool GameObject::LoadFromDB(uint32 guid, Map *map)
     if (!Create(guid, entry, map, x, y, z, ang, rotation0, rotation1, rotation2, rotation3, animprogress, go_state))
         return false;
 
-    if (!GetGOInfo()->GetDespawnPossibility() && !GetGOInfo()->IsDespawnAtAction() && data->spawntimesecs >= 0)
+    if (!GetGOInfo()->GetDespawnPossibility() && !GetGOInfo()->IsDespawnAtAction() && data->spawntimesecsmin >= 0)
     {
         SetFlag(GAMEOBJECT_FLAGS, GO_FLAG_NODESPAWN);
         m_spawnedByDefault = true;
@@ -847,10 +870,10 @@ bool GameObject::LoadFromDB(uint32 guid, Map *map)
     }
     else
     {
-        if (data->spawntimesecs >= 0)
+        if (data->spawntimesecsmin >= 0)
         {
             m_spawnedByDefault = true;
-            m_respawnDelayTime = data->spawntimesecs;
+            m_respawnDelayTime = data->GetRandomRespawnTime();
 
             m_respawnTime  = map->GetPersistentState()->GetGORespawnTime(GetGUIDLow());
 
@@ -864,12 +887,14 @@ bool GameObject::LoadFromDB(uint32 guid, Map *map)
         else
         {
             m_spawnedByDefault = false;
-            m_respawnDelayTime = -data->spawntimesecs;
+            m_respawnDelayTime = -data->spawntimesecsmin;
             m_respawnTime = 0;
         }
     }
 
     m_isActiveObject = (data->spawnFlags & SPAWN_FLAG_ACTIVE);
+    m_visibilityModifier = data->visibilityModifier;
+
     return true;
 }
 
@@ -1001,7 +1026,7 @@ bool GameObject::isVisibleForInState(Player const* u, WorldObject const* viewPoi
 
     // check distance
     return IsWithinDistInMap(viewPoint, GetMap()->GetVisibilityDistance() +
-                             (inVisibleList ? World::GetVisibleObjectGreyDistance() : 0.0f), false);
+                             (inVisibleList ? World::GetVisibleObjectGreyDistance() : 0.0f) + GetVisibilityModifier(), false);
 }
 
 void GameObject::Respawn()
@@ -1150,8 +1175,36 @@ void GameObject::TriggerLinkedGameObject(Unit* target)
     }
 
     // found correct GO
-    if (trapGO)
+    if (trapGO && trapGO->isSpawned())
         trapGO->Use(target);
+}
+
+void GameObject::RespawnLinkedGameObject()
+{
+    uint32 trapEntry = GetGOInfo()->GetLinkedGameObjectEntry();
+
+    if (!trapEntry)
+        return;
+
+    GameObjectInfo const* trapInfo = sGOStorage.LookupEntry<GameObjectInfo>(trapEntry);
+    if (!trapInfo || trapInfo->type != GAMEOBJECT_TYPE_TRAP)
+        return;
+
+    float range = 0.5f;
+
+    // search nearest linked GO
+    GameObject* trapGO = NULL;
+    {
+        // search closest with base of used GO, using max range of trap spell as search radius
+        MaNGOS::NearestGameObjectEntryInObjectRangeCheck go_check(*this, trapEntry, range);
+        MaNGOS::GameObjectLastSearcher<MaNGOS::NearestGameObjectEntryInObjectRangeCheck> checker(trapGO, go_check);
+
+        Cell::VisitGridObjects(this, checker, range);
+    }
+
+    // Respawn the trap
+    if (trapGO && !trapGO->isSpawned())
+        trapGO->Respawn();
 }
 
 GameObject* GameObject::LookupFishingHoleAround(float range)
@@ -1291,6 +1344,16 @@ void GameObject::Use(Unit* user)
             if (uint32 spellId = GetGOInfo()->trap.spellId)
                 user->CastSpell(user, spellId, true, NULL, NULL, GetObjectGuid());
 
+            if (uint32 max_charges = GetGOInfo()->GetCharges())
+            {
+                AddUse();
+                if (m_useTimes >= max_charges)
+                {
+                    m_useTimes = 0;
+                    SetLootState(GO_JUST_DEACTIVATED);
+                }
+            }
+
             return;
         }
         case GAMEOBJECT_TYPE_CHAIR:                         //7 Sitting: Wooden bench, chairs
@@ -1422,7 +1485,7 @@ void GameObject::Use(Unit* user)
 
             // this appear to be ok, however others exist in addition to this that should have custom (ex: 190510, 188692, 187389)
             if (time_to_restore && info->goober.customAnim)
-                SendGameObjectCustomAnim(GetObjectGuid());
+                SendGameObjectCustomAnim();
             else
                 SetGoState(GO_STATE_ACTIVE);
 
@@ -1853,6 +1916,10 @@ void GameObject::Use(Unit* user)
         return;
     }
 
+    // NOTE: Some of the spells used by GOs are considered triggered, but have cast times.
+    // Ensure that the spell you are using, and any event it may trigger, is checking
+    // pointer validity (i.e. instance, GO, etc) since the caster may have moved maps
+    // or the GO might be gone by the time the spell is executed.
     Spell *spell = new Spell(spellCaster, spellInfo, triggered, GetObjectGuid());
 
     SpellCastTargets targets;
@@ -1940,7 +2007,7 @@ bool GameObject::IsHostileTo(Unit const* unit) const
         return true;
 
     // faction base cases
-    FactionTemplateEntry const*tester_faction = sFactionTemplateStore.LookupEntry(GetGOInfo()->faction);
+    FactionTemplateEntry const*tester_faction = sObjectMgr.GetFactionTemplateEntry(GetGOInfo()->faction);
     FactionTemplateEntry const*target_faction = unit->getFactionTemplateEntry();
     if (!tester_faction || !target_faction)
         return false;
@@ -1955,7 +2022,7 @@ bool GameObject::IsHostileTo(Unit const* unit) const
                 return *force <= REP_HOSTILE;
 
             // apply reputation state
-            FactionEntry const* raw_tester_faction = sFactionStore.LookupEntry(tester_faction->faction);
+            FactionEntry const* raw_tester_faction = sObjectMgr.GetFactionEntry(tester_faction->faction);
             if (raw_tester_faction && raw_tester_faction->reputationListID >= 0)
                 return ((Player const*)unit)->GetReputationMgr().GetRank(raw_tester_faction) <= REP_HOSTILE;
         }
@@ -1983,7 +2050,7 @@ bool GameObject::IsFriendlyTo(Unit const* unit) const
         return false;
 
     // faction base cases
-    FactionTemplateEntry const*tester_faction = sFactionTemplateStore.LookupEntry(GetGOInfo()->faction);
+    FactionTemplateEntry const*tester_faction = sObjectMgr.GetFactionTemplateEntry(GetGOInfo()->faction);
     FactionTemplateEntry const*target_faction = unit->getFactionTemplateEntry();
     if (!tester_faction || !target_faction)
         return false;
@@ -1998,7 +2065,7 @@ bool GameObject::IsFriendlyTo(Unit const* unit) const
                 return *force >= REP_FRIENDLY;
 
             // apply reputation state
-            if (FactionEntry const* raw_tester_faction = sFactionStore.LookupEntry(tester_faction->faction))
+            if (FactionEntry const* raw_tester_faction = sObjectMgr.GetFactionEntry(tester_faction->faction))
                 if (raw_tester_faction->reputationListID >= 0)
                     return ((Player const*)unit)->GetReputationMgr().GetRank(raw_tester_faction) >= REP_FRIENDLY;
         }
@@ -2153,8 +2220,10 @@ struct SpawnGameObjectInMapsWorker
                 delete pGameobject;
             else
             {
-                if (pGameobject->isSpawnedByDefault())
+                //if (pGameobject->isSpawnedByDefault())
                     map->Add(pGameobject);
+                //else
+                //    delete pGameobject;
             }
         }
     }
@@ -2214,11 +2283,42 @@ GameObjectData const * GameObject::GetGOData() const
     return sObjectMgr.GetGOData(GetGUIDLow());
 }
 
+void GameObject::SendGameObjectCustomAnim(uint32 animId /*= 0*/)
+{
+    WorldPacket data(SMSG_GAMEOBJECT_CUSTOM_ANIM, 8 + 4);
+    data << GetObjectGuid();
+    data << uint32(animId);
+    SendMessageToSet(&data, true);
+}
+
+void GameObject::SendGameObjectReset()
+{
+    WorldPacket data(SMSG_GAMEOBJECT_RESET_STATE, 8);
+    data << GetObjectGuid();
+    SendMessageToSet(&data, true);
+}
+
 void GameObject::Despawn()
 {
     SendObjectDeSpawnAnim(GetObjectGuid());
     if (GameObjectData const* data = GetGOData())
-        SetRespawnTime(data->spawntimesecs);
+    {
+        if (m_spawnedByDefault)
+        {
+            // TODO: Research this more. Some GOBJs don't set a respawn delay time, but call ::Despawn
+            // If this happens, they will respawn instantly which is most likely undesired behaviour
+            uint32 respawnTime = GetRespawnDelay();
+            if (!respawnTime)
+                respawnTime = data->GetRandomRespawnTime();
+
+            SetRespawnTime(respawnTime);
+        }
+        else
+        {
+            m_respawnTime = 0;
+            m_respawnDelayTime = data->spawntimesecsmin < 0 ? -data->spawntimesecsmin : data->spawntimesecsmin;
+        }
+    }
     else
         AddObjectToRemoveList();
 }

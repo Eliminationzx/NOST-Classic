@@ -38,7 +38,7 @@ void FollowerAI::AttackStart(Unit* pWho)
         m_creature->SetInCombatWith(pWho);
         pWho->SetInCombatWith(m_creature);
 
-        if (IsCombatMovement())
+        if (IsCombatMovementEnabled())
             m_creature->GetMotionMaster()->MoveChase(pWho);
     }
 }
@@ -151,7 +151,7 @@ void FollowerAI::JustRespawned()
 {
     m_uiFollowState = STATE_FOLLOW_NONE;
 
-    if (!IsCombatMovement())
+    if (!IsCombatMovementEnabled())
         SetCombatMovement(true);
 
     if (m_creature->getFaction() != m_creature->GetCreatureInfo()->faction_A)
@@ -182,6 +182,9 @@ void FollowerAI::EnterEvadeMode()
         if (m_creature->GetMotionMaster()->GetCurrentMovementGeneratorType() == CHASE_MOTION_TYPE)
             m_creature->GetMotionMaster()->MoveTargetedHome();
     }
+
+    // Reset back to default spells template. This also resets timers.
+    SetSpellsTemplate(m_creature->GetCreatureInfo()->spells_template);
 
     Reset();
 }
@@ -257,6 +260,9 @@ void FollowerAI::UpdateFollowerAI(const uint32 uiDiff)
 {
     if (!m_creature->SelectHostileTarget() || !m_creature->getVictim())
         return;
+
+    if (!m_CreatureSpells.empty())
+        DoSpellTemplateCasts(uiDiff);
 
     DoMeleeAttackIfReady();
 }

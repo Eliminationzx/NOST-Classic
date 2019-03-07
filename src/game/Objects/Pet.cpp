@@ -64,10 +64,10 @@ Pet::Pet(PetType type) :
     m_TrainingPoints(0), m_resetTalentsCost(0), m_resetTalentsTime(0),
     m_removed(false), m_happinessTimer(7500), m_loyaltyTimer(12000), m_petType(type), m_duration(0),
     m_loyaltyPoints(0), m_bonusdamage(0), m_auraUpdateMask(0), m_loading(false),
-    m_enabled(true)
+    m_enabled(true), m_unSummoned(false), m_focusTimer(4000)
 {
     m_name = "Pet";
-    m_regenTimer = 4000;
+    m_regenTimer = REGEN_TIME_FULL;
 
     // pets always have a charminfo, even if they are not actually charmed
     InitCharmInfo(this);
@@ -330,7 +330,9 @@ bool Pet::LoadPetFromDB(Player* owner, uint32 petentry, uint32 petnumber, bool c
         Tokens tokens = StrSplit(m_pTmpCache->TeachSpelldata, " ");
         Tokens::const_iterator iter;
         int index;
-        for (iter = tokens.begin(), index = 0; index < 4; ++iter, ++index)
+        // Spells are in pairs. First is the ability, second is what teaches it to the hunter
+        // Pets can have a max of 4 spells.
+        for (iter = tokens.begin(), index = 0; index < 4 && iter != tokens.end(); ++iter, ++index)
         {
             uint32 tmp = atol((*iter).c_str());
 
@@ -464,6 +466,11 @@ void Pet::SavePetToDB(PetSaveMode mode)
             // for warlock case
             mode = PET_SAVE_NOT_IN_SLOT;
         }
+
+        // pet is dead so it doesn't have to be shown at character login
+        if (mode == PET_SAVE_AS_CURRENT && !isAlive())
+            mode = PET_SAVE_NOT_IN_SLOT;
+
         // On recup l'info dans le cache
         uint32 ownerLow = GetOwnerGuid().GetCounter();
         m_pTmpCache = sCharacterDatabaseCache.GetCharacterPetCacheByOwnerAndId(ownerLow, m_charmInfo->GetPetNumber());
@@ -475,7 +482,8 @@ void Pet::SavePetToDB(PetSaveMode mode)
         uint32 curmana = GetPower(POWER_MANA);
 
         // stable and not in slot saves
-        if (mode != PET_SAVE_AS_CURRENT)
+        if ( (mode != PET_SAVE_AS_CURRENT && getPetType() != HUNTER_PET) ||
+              mode == PET_SAVE_FIRST_STABLE_SLOT || mode == PET_SAVE_LAST_STABLE_SLOT )
             RemoveAllAuras();
 
         //save pet's data as one single transaction
@@ -722,12 +730,8 @@ void Pet::Update(uint32 update_diff, uint32 diff)
 
 void Pet::RegenerateAll(uint32 update_diff, bool skipCombatCheck)
 {
-    //regenerate Focus
     if (m_regenTimer <= update_diff)
     {
-        if (getPetType() == HUNTER_PET)
-            RegenerateFocus();
-
         if (!isInCombat() || IsPolymorphed())
             RegenerateHealth();
 
@@ -740,6 +744,14 @@ void Pet::RegenerateAll(uint32 update_diff, bool skipCombatCheck)
 
     if (getPetType() != HUNTER_PET)
         return;
+
+    if (m_focusTimer <= update_diff)
+    {
+        RegenerateFocus();
+        m_focusTimer = 4000;
+    }
+    else
+        m_focusTimer -= update_diff;
 
     if (m_happinessTimer <= update_diff)
     {
@@ -767,7 +779,7 @@ void Pet::RegenerateFocus()
     if (curValue >= maxValue)
         return;
 
-    float addvalue = 24 * sWorld.getConfig(CONFIG_FLOAT_RATE_POWER_FOCUS);
+    float addvalue = 25 * sWorld.getConfig(CONFIG_FLOAT_RATE_POWER_FOCUS);
 
     AuraList const& ModPowerRegenPCTAuras = GetAurasByType(SPELL_AURA_MOD_POWER_REGEN_PERCENT);
     for (AuraList::const_iterator i = ModPowerRegenPCTAuras.begin(); i != ModPowerRegenPCTAuras.end(); ++i)
@@ -997,6 +1009,11 @@ int32 Pet::GetDispTP() const
 
 void Pet::Unsummon(PetSaveMode mode, Unit* owner /*= NULL*/)
 {
+    if (m_removed || m_unSummoned)
+        return;
+
+    m_unSummoned = true;
+
     if (!owner)
         owner = GetOwner();
 
@@ -1005,7 +1022,10 @@ void Pet::Unsummon(PetSaveMode mode, Unit* owner /*= NULL*/)
     if (owner)
     {
         if (GetOwnerGuid() != owner->GetObjectGuid())
+        {
+            m_unSummoned = false;
             return;
+        }
 
         Player* p_owner = owner->GetTypeId() == TYPEID_PLAYER ? (Player*)owner : NULL;
 
@@ -1065,13 +1085,42 @@ void Pet::Unsummon(PetSaveMode mode, Unit* owner /*= NULL*/)
                     p_owner->_SetMiniPet(nullptr);
                 break;
             case GUARDIAN_PET:
+            {
+                // Alert summoner that we're about to despawn. Do it before we clear
+                // the guardian ref, so it can still be utilized if necessary
+                if (Creature *creature = owner->ToCreature())
+                {
+                    if (creature->AI())
+                        creature->AI()->SummonedCreatureDespawn(this);
+                }
+
                 owner->RemoveGuardian(this);
                 break;
+            }
             default:
                 if (owner->GetPetGuid() == GetObjectGuid())
                     owner->SetPet(nullptr);
                 break;
         }
+    }
+
+    // If we're being charmed, remove the charm. Note that we remove the
+    // charm on us, not the charmer. The charmer may in fact be under a
+    // charm themselves, and in cancelling this charm calling this method.
+    // Cancelling the parent charm = crash.
+    if (GetCharmerGuid())
+        RemoveCharmAuras();
+
+    // If we're being possessed, remove the possesion. If we don't, and the caster
+    // is a player, they are left with a dangling pointer for Player::m_mover
+    if (Unit *possessor = GetUnit(*this, GetPossessorGuid()))
+    {
+        // Remove any auras due to the spell if they exist
+        if (uint32 spellId = GetUInt32Value(UNIT_CREATED_BY_SPELL))
+            possessor->RemoveAurasDueToSpell(spellId);
+
+        if (Player *pPlayerPossessor = possessor->ToPlayer())
+            pPlayerPossessor->ModPossessPet(this, false, AURA_REMOVE_BY_DEFAULT);
     }
 
     SavePetToDB(mode);
@@ -1086,7 +1135,10 @@ void Pet::DelayedUnsummon(uint32 timeMSToDespawn, PetSaveMode mode)
         UnsummonPetDelayEvent *pEvent = new UnsummonPetDelayEvent(*this, mode);
         
         m_Events.AddEvent(pEvent, m_Events.CalculateTime(timeMSToDespawn));
+        return;
     }
+
+    Unsummon(mode);
 }
 
 void Pet::GivePetXP(uint32 xp)
@@ -1196,8 +1248,12 @@ bool Pet::CreateBaseAtCreature(Creature* creature)
         SetByteValue(UNIT_FIELD_BYTES_2, 1, UNIT_BYTE2_FLAG_UNK3 | UNIT_BYTE2_FLAG_AURAS | UNIT_BYTE2_FLAG_UNK5);
         SetUInt32Value(UNIT_FIELD_FLAGS, UNIT_FLAG_PET_RENAME | UNIT_FLAG_PET_ABANDON);
 
-
-        SetUInt32Value(UNIT_MOD_CAST_SPEED, creature->GetUInt32Value(UNIT_MOD_CAST_SPEED));
+#if SUPPORTED_CLIENT_BUILD >= CLIENT_BUILD_1_12_1
+        SetFloatValue(UNIT_MOD_CAST_SPEED, creature->GetFloatValue(UNIT_MOD_CAST_SPEED));
+#else
+        SetInt32Value(UNIT_MOD_CAST_SPEED, creature->GetInt32Value(UNIT_MOD_CAST_SPEED));
+#endif
+        
         SetLoyaltyLevel(REBELLIOUS);
     }
     return true;
@@ -1242,7 +1298,8 @@ bool Pet::InitStatsForLevel(uint32 petlevel, Unit* owner)
 
     SetLevel(petlevel);
 
-    if (sWorld.GetWowPatch() < WOW_PATCH_109)
+    // Before 1.9 pets retain their wild damage type
+    if (sWorld.GetWowPatch() < WOW_PATCH_109 && sWorld.getConfig(CONFIG_BOOL_ACCURATE_PETS))
         SetMeleeDamageSchool(SpellSchools(cinfo->dmgschool));
     else
         SetMeleeDamageSchool(SPELL_SCHOOL_NORMAL);
@@ -1253,9 +1310,11 @@ bool Pet::InitStatsForLevel(uint32 petlevel, Unit* owner)
     SetAttackTime(BASE_ATTACK, cinfo->baseattacktime); //BASE_ATTACK_TIME);
     SetAttackTime(OFF_ATTACK, cinfo->baseattacktime); //BASE_ATTACK_TIME);
     SetAttackTime(RANGED_ATTACK, cinfo->rangeattacktime); //BASE_ATTACK_TIME);
-
-    SetFloatValue(UNIT_MOD_CAST_SPEED, 1.0);
-
+#if SUPPORTED_CLIENT_BUILD >= CLIENT_BUILD_1_12_1
+    SetFloatValue(UNIT_MOD_CAST_SPEED, 1.0f);
+#else
+    SetInt32Value(UNIT_MOD_CAST_SPEED, 0);
+#endif
     CreatureFamilyEntry const* cFamily = sCreatureFamilyStore.LookupEntry(cinfo->family);
     if (cFamily && cFamily->minScale > 0.0f && getPetType() == HUNTER_PET)
     {
@@ -1274,7 +1333,10 @@ bool Pet::InitStatsForLevel(uint32 petlevel, Unit* owner)
 
     int32 createResistance[MAX_SPELL_SCHOOL] = {0, 0, 0, 0, 0, 0, 0};
 
-    if (getPetType() != HUNTER_PET)
+    // http://wowwiki.wikia.com/wiki/Patch_1.3.0
+    // Before 1.3 pets retain their wild resistances, however it is mentioned as a bug.
+    // TODO: Do we keep it or remove it?
+    if (getPetType() != HUNTER_PET || (sWorld.GetWowPatch() < WOW_PATCH_103 && sWorld.getConfig(CONFIG_BOOL_ACCURATE_PETS)))
     {
         createResistance[SPELL_SCHOOL_HOLY]   = cinfo->resistance1;
         createResistance[SPELL_SCHOOL_FIRE]   = cinfo->resistance2;
@@ -1676,7 +1738,7 @@ void Pet::_LoadAuras(uint32 timediff)
             }
 
             // do not load single target auras (unless they were cast by the player)
-            if (casterGuid != GetObjectGuid() && IsSingleTargetSpell(spellproto))
+            if (casterGuid != GetObjectGuid() && HasSingleTargetAura(spellproto))
                 continue;
 
             if (remaintime != -1 && !IsPositiveSpell(spellproto))
@@ -1715,7 +1777,10 @@ void Pet::_LoadAuras(uint32 timediff)
             }
 
             if (!holder->IsEmptyHolder())
-                AddSpellAuraHolder(holder);
+            {
+                if (!AddSpellAuraHolder(holder))
+                    holder = nullptr;
+            }
             else
                 delete holder;
         }

@@ -65,6 +65,11 @@ struct boss_renatakiAI : public ScriptedAI
         m_creature->SetUInt32Value(UNIT_VIRTUAL_ITEM_INFO  + 1, 3);
     }
 
+    void JustDied(Unit* pKiller)
+    {
+        m_creature->LeaveVanish();
+    }
+
     void UpdateAI(const uint32 diff)
     {
         if (!Light)
@@ -77,7 +82,7 @@ struct boss_renatakiAI : public ScriptedAI
             return;
 
         if (m_creature->GetHealthPercent() < 30)
-            DoCastSpellIfCan(m_creature, SPELL_ENRAGE, CAST_AURA_NOT_PRESENT);
+            DoCastSpellIfCan(m_creature, SPELL_ENRAGE, CF_AURA_NOT_PRESENT);
 
         if (Invisible)
         {

@@ -43,6 +43,7 @@
 #include "MoveSplineInitArgs.h"
 #include "WorldSession.h"
 #include "SQLStorages.h"
+#include "CreatureLinkingMgr.h"
 
 #include <bitset>
 #include <list>
@@ -68,6 +69,7 @@ class ChatHandler;
 struct ScriptInfo;
 class BattleGround;
 class GridMap;
+class WeatherSystem;
 class Transport;
 
 namespace VMAP
@@ -190,6 +192,80 @@ typedef ACE_Thread_Mutex MapMutexType; // Use ACE_Null_Mutex to disable locks
 // Instance IDs reserved for internal use (instanced continent parts, ...)
 #define RESERVED_INSTANCES_LAST 100
 
+typedef bool(Map::*ScriptCommandFunction) (const ScriptInfo& script, WorldObject* source, WorldObject* target);
+
+struct ScriptedEventTarget
+{
+    ScriptedEventTarget(WorldObject* object, uint32 failureCondition, uint32 failureScript, uint32 successCondition, uint32 successScript) :
+        pObject(object), uiFailureCondition(failureCondition), uiFailureScript(failureScript), uiSuccessCondition(successCondition), uiSuccessScript(successScript) {}
+
+    WorldObject* pObject;
+    uint32 uiFailureCondition;
+    uint32 uiFailureScript;
+    uint32 uiSuccessCondition;
+    uint32 uiSuccessScript;
+};
+
+struct ScriptedEvent
+{
+    ScriptedEvent(uint32 eventId, WorldObject* source, WorldObject* target, Map* map, time_t expireTime, uint32 failureCondition, uint32 failureScript, uint32 successCondition, uint32 successScript) :
+        m_uiEventId(eventId), m_pSource(source), m_pTarget(target), m_pMap(map), m_tExpireTime(expireTime), m_uiFailureCondition(failureCondition), m_uiFailureScript(failureScript), m_uiSuccessCondition(successCondition), m_uiSuccessScript(successScript) {}
+    
+    WorldObject* m_pSource;
+    WorldObject* m_pTarget;
+    Map* const m_pMap;
+
+    const uint32 m_uiEventId;
+    time_t m_tExpireTime;
+
+    uint32 m_uiFailureCondition;
+    uint32 m_uiFailureScript;
+    uint32 m_uiSuccessCondition;
+    uint32 m_uiSuccessScript;
+
+    std::map<uint32, uint32> m_mData;
+    std::vector<ScriptedEventTarget> m_vTargets;
+
+    // Returns true when event has expired.
+    bool UpdateEvent();
+
+    void EndEvent(bool bSuccess);
+
+    void SendEventToMainTargets(uint32 uiData);
+
+    void SendEventToAdditionalTargets(uint32 uiData);
+
+    void SendEventToAllTargets(uint32 uiData);
+
+    uint32 GetData(uint32 uiIndex) const
+    {
+        auto itr = m_mData.find(uiIndex);
+        if (itr != m_mData.end())
+            return itr->second;
+        return 0;
+    }
+
+    void SetData(uint32 uiIndex, uint32 uiValue)
+    {
+        m_mData[uiIndex] = uiValue;
+    }
+
+    void IncrementData(uint32 uiIndex, uint32 uiValue)
+    {
+        m_mData[uiIndex] += uiValue;
+    }
+
+    void DecrementData(uint32 uiIndex, uint32 uiValue)
+    {
+        if (m_mData[uiIndex] < uiValue)
+            m_mData[uiIndex] = 0;
+        else
+            m_mData[uiIndex] -= uiValue;
+    }
+
+    ScriptedEvent(const ScriptedEvent&) = delete;
+};
+
 class MANGOS_DLL_SPEC Map : public GridRefManager<NGridType>, public MaNGOS::ObjectLevelLockable<Map, ACE_Thread_Mutex>
 {
     friend class MapReference;
@@ -305,6 +381,10 @@ class MANGOS_DLL_SPEC Map : public GridRefManager<NGridType>, public MaNGOS::Obj
 
         void UpdateObjectVisibility(WorldObject* obj, Cell cell, CellPair cellpair);
 
+        void UpdateActiveObjectVisibility(Player *player);
+        void UpdateActiveObjectVisibility(Player *player, ObjectGuidSet &visibleGuids);
+        void UpdateActiveObjectVisibility(Player *player, ObjectGuidSet &visibleGuids, UpdateData &data, std::set<WorldObject*> &visibleNow);
+
         void resetMarkedCells() { marked_cells.reset(); }
         bool isCellMarked(uint32 pCellId) { return marked_cells.test(pCellId); }
         void markCell(uint32 pCellId) { marked_cells.set(pCellId); }
@@ -313,14 +393,40 @@ class MANGOS_DLL_SPEC Map : public GridRefManager<NGridType>, public MaNGOS::Obj
         uint32 GetPlayersCountExceptGMs() const;
         bool ActiveObjectsNearGrid(uint32 x,uint32 y) const;
 
+        // Send a Packet to all players on a map
         void SendToPlayers(WorldPacket const* data) const;
+        // Send a Packet to all players in a zone. Return false if no player found
+        bool SendToPlayersInZone(WorldPacket const* data, uint32 zoneId) const;
 
         typedef MapRefManager PlayerList;
         PlayerList const& GetPlayers() const { return m_mapRefManager; }
 
-        //per-map script storage
-        void ScriptsStart(std::map<uint32, std::multimap<uint32, ScriptInfo> > const& scripts, uint32 id, Object* source, Object* target);
-        void ScriptCommandStart(ScriptInfo const& script, uint32 delay, Object* source, Object* target);
+        ScriptedEvent* GetScriptedMapEvent(uint32 id)
+        {
+            auto itr = m_mScriptedEvents.find(id);
+            if (itr != m_mScriptedEvents.end())
+                return &itr->second;
+            return nullptr;
+        }
+
+        const ScriptedEvent* GetScriptedMapEvent(uint32 id) const
+        {
+            auto itr = m_mScriptedEvents.find(id);
+            if (itr != m_mScriptedEvents.end())
+                return &itr->second;
+            return nullptr;
+        }
+
+        ScriptedEvent* StartScriptedEvent(uint32 id, WorldObject* source, WorldObject* target, uint32 timelimit, uint32 failureCondition, uint32 failureScript, uint32 successCondition, uint32 successScript);
+
+        // Adds all commands that are part of the provided script id to the queue.
+        void ScriptsStart(std::map<uint32, std::multimap<uint32, ScriptInfo> > const& scripts, uint32 id, WorldObject* source, WorldObject* target);
+        // Adds the provided command to the queue. Will be handled by ScriptsProcess.
+        void ScriptCommandStart(ScriptInfo const& script, uint32 delay, WorldObject* source, WorldObject* target);
+        // Immediately executes the provided command.
+        void ScriptCommandStartDirect(const ScriptInfo& script, WorldObject* source, WorldObject* target);
+        // Removes all parts of script from the queue.
+        void TerminateScript(const ScriptAction& step);
 
         // must called with AddToWorld
         void AddToActive(WorldObject* obj);
@@ -484,7 +590,26 @@ class MANGOS_DLL_SPEC Map : public GridRefManager<NGridType>, public MaNGOS::Obj
         void BindToInstanceOrRaid(Player* player, time_t objectResetTime, bool permBindToRaid);
         void TeleportAllPlayersToHomeBind();
 
+        // WeatherSystem
+        WeatherSystem* GetWeatherSystem() const { return m_weatherSystem; }
+        /** Set the weather in a zone on this map
+         * @param zoneId set the weather for which zone
+         * @param type What weather to set
+         * @param grade how strong the weather should be
+         * @param permanently set the weather permanently?
+         */
+        void SetWeather(uint32 zoneId, WeatherType type, float grade, bool permanently);
+
         void SetMapUpdateIndex(int idx) { _updateIdx = idx; }
+
+        // Get Holder for Creature Linking
+        CreatureLinkingHolder* GetCreatureLinkingHolder() { return &m_creatureLinkingHolder; }
+
+        void AddCorpseToRemove(Corpse* corpse, ObjectGuid looter_guid);
+        GameObject* SummonGameObject(uint32 entry, float x, float y, float z, float ang, float rotation0, float rotation1, float rotation2, float rotation3, uint32 respawnTime, uint32 worldMask);
+
+        bool ShouldUpdateMap(uint32 now, uint32 inactiveTimeLimit);
+        uint32 GetLastMapUpdate() const { return _lastMapUpdate; }
 
     private:
         void LoadMapAndVMap(int gx, int gy);
@@ -520,6 +645,8 @@ class MANGOS_DLL_SPEC Map : public GridRefManager<NGridType>, public MaNGOS::Obj
 
         void setNGrid(NGridType* grid, uint32 x, uint32 y);
         void ScriptsProcess();
+        bool FindScriptInitialTargets(WorldObject*& source, WorldObject*& target, const ScriptAction& step);
+        bool FindScriptFinalTargets(WorldObject*& source, WorldObject*& target, const ScriptInfo& step);
 
         void SendObjectUpdates();
         void UpdateVisibilityForRelocations();
@@ -536,7 +663,18 @@ class MANGOS_DLL_SPEC Map : public GridRefManager<NGridType>, public MaNGOS::Obj
 
         mutable MapMutexType    unitsMvtUpdate_lock;
         std::set<Unit*>         unitsMvtUpdate;
-        uint32 m_diffBuffer;
+
+        mutable MapMutexType    _corpseRemovalLock;
+        typedef std::list<std::pair<Corpse*, ObjectGuid>> CorpseRemoveList;
+        CorpseRemoveList        _corpseToRemove;
+
+        MapMutexType            _bonesLock;
+        uint32                  _bonesCleanupTimer;
+        std::list<Corpse*>      _bones;
+
+        void RemoveCorpses(bool unload = false);
+        void RemoveOldBones(const uint32 diff);
+
     protected:
         MapEntry const* i_mapEntry;
         uint32 i_id;
@@ -612,6 +750,177 @@ class MANGOS_DLL_SPEC Map : public GridRefManager<NGridType>, public MaNGOS::Obj
         uint32 _lastCellsUpdate;
 
         int8 _updateIdx;
+
+        // Holder for information about linked mobs
+        CreatureLinkingHolder m_creatureLinkingHolder;
+
+        // WeatherSystem
+        WeatherSystem* m_weatherSystem;
+
+        // Scripted Map Events
+        std::map<uint32, ScriptedEvent> m_mScriptedEvents;
+        void UpdateScriptedEvents();
+        uint32 m_uiScriptedEventsTimer;
+
+        // Functions to handle all db script commands.
+        bool ScriptCommand_Talk(const ScriptInfo& script, WorldObject* source, WorldObject* target);
+        bool ScriptCommand_Emote(const ScriptInfo& script, WorldObject* source, WorldObject* target);
+        bool ScriptCommand_FieldSet(const ScriptInfo& script, WorldObject* source, WorldObject* target);
+        bool ScriptCommand_MoveTo(const ScriptInfo& script, WorldObject* source, WorldObject* target);
+        bool ScriptCommand_ModifyFlags(const ScriptInfo& script, WorldObject* source, WorldObject* target);
+        bool ScriptCommand_InterruptCasts(const ScriptInfo& script, WorldObject* source, WorldObject* target);
+        bool ScriptCommand_TeleportTo(const ScriptInfo& script, WorldObject* source, WorldObject* target);
+        bool ScriptCommand_QuestExplored(const ScriptInfo& script, WorldObject* source, WorldObject* target);
+        bool ScriptCommand_KillCredit(const ScriptInfo& script, WorldObject* source, WorldObject* target);
+        bool ScriptCommand_RespawnGameObject(const ScriptInfo& script, WorldObject* source, WorldObject* target);
+        bool ScriptCommand_SummonCreature(const ScriptInfo& script, WorldObject* source, WorldObject* target);
+        bool ScriptCommand_OpenDoor(const ScriptInfo& script, WorldObject* source, WorldObject* target);
+        bool ScriptCommand_CloseDoor(const ScriptInfo& script, WorldObject* source, WorldObject* target);
+        bool ScriptCommand_ActivateGameObject(const ScriptInfo& script, WorldObject* source, WorldObject* target);
+        bool ScriptCommand_RemoveAura(const ScriptInfo& script, WorldObject* source, WorldObject* target);
+        bool ScriptCommand_CastSpell(const ScriptInfo& script, WorldObject* source, WorldObject* target);
+        bool ScriptCommand_PlaySound(const ScriptInfo& script, WorldObject* source, WorldObject* target);
+        bool ScriptCommand_CreateItem(const ScriptInfo& script, WorldObject* source, WorldObject* target);
+        bool ScriptCommand_DespawnCreature(const ScriptInfo& script, WorldObject* source, WorldObject* target);
+        bool ScriptCommand_SetEquipment(const ScriptInfo& script, WorldObject* source, WorldObject* target);
+        bool ScriptCommand_SetMovementType(const ScriptInfo& script, WorldObject* source, WorldObject* target);
+        bool ScriptCommand_SetActiveObject(const ScriptInfo& script, WorldObject* source, WorldObject* target);
+        bool ScriptCommand_SetFaction(const ScriptInfo& script, WorldObject* source, WorldObject* target);
+        bool ScriptCommand_Morph(const ScriptInfo& script, WorldObject* source, WorldObject* target);
+        bool ScriptCommand_Mount(const ScriptInfo& script, WorldObject* source, WorldObject* target);
+        bool ScriptCommand_SetRun(const ScriptInfo& script, WorldObject* source, WorldObject* target);
+        bool ScriptCommand_AttackStart(const ScriptInfo& script, WorldObject* source, WorldObject* target);
+        bool ScriptCommand_UpdateEntry(const ScriptInfo& script, WorldObject* source, WorldObject* target);
+        bool ScriptCommand_SetStandState(const ScriptInfo& script, WorldObject* source, WorldObject* target);
+        bool ScriptCommand_ModifyThreat(const ScriptInfo& script, WorldObject* source, WorldObject* target);
+        bool ScriptCommand_SendTaxiPath(const ScriptInfo& script, WorldObject* source, WorldObject* target);
+        bool ScriptCommand_TerminateScript(const ScriptInfo& script, WorldObject* source, WorldObject* target);
+        bool ScriptCommand_TerminateCondition(const ScriptInfo& script, WorldObject* source, WorldObject* target);
+        bool ScriptCommand_Evade(const ScriptInfo& script, WorldObject* source, WorldObject* target);
+        bool ScriptCommand_SetHomePosition(const ScriptInfo& script, WorldObject* source, WorldObject* target);
+        bool ScriptCommand_TurnTo(const ScriptInfo& script, WorldObject* source, WorldObject* target);
+        bool ScriptCommand_MeetingStone(const ScriptInfo& script, WorldObject* source, WorldObject* target);
+        bool ScriptCommand_SetData(const ScriptInfo& script, WorldObject* source, WorldObject* target);
+        bool ScriptCommand_SetData64(const ScriptInfo& script, WorldObject* source, WorldObject* target);
+        bool ScriptCommand_StartScript(const ScriptInfo& script, WorldObject* source, WorldObject* target);
+        bool ScriptCommand_RemoveItem(const ScriptInfo& script, WorldObject* source, WorldObject* target);
+        bool ScriptCommand_RemoveGameObject(const ScriptInfo& script, WorldObject* source, WorldObject* target);
+        bool ScriptCommand_SetMeleeAttack(const ScriptInfo& script, WorldObject* source, WorldObject* target);
+        bool ScriptCommand_SetCombatMovement(const ScriptInfo& script, WorldObject* source, WorldObject* target);
+        bool ScriptCommand_SetPhase(const ScriptInfo& script, WorldObject* source, WorldObject* target);
+        bool ScriptCommand_SetPhaseRandom(const ScriptInfo& script, WorldObject* source, WorldObject* target);
+        bool ScriptCommand_SetPhaseRange(const ScriptInfo& script, WorldObject* source, WorldObject* target);
+        bool ScriptCommand_Flee(const ScriptInfo& script, WorldObject* source, WorldObject* target);
+        bool ScriptCommand_DealDamage(const ScriptInfo& script, WorldObject* source, WorldObject* target);
+        bool ScriptCommand_ZoneCombatPulse(const ScriptInfo& script, WorldObject* source, WorldObject* target);
+        bool ScriptCommand_CallForHelp(const ScriptInfo& script, WorldObject* source, WorldObject* target);
+        bool ScriptCommand_SetSheath(const ScriptInfo& script, WorldObject* source, WorldObject* target);
+        bool ScriptCommand_Invincibility(const ScriptInfo& script, WorldObject* source, WorldObject* target);
+        bool ScriptCommand_GameEvent(const ScriptInfo& script, WorldObject* source, WorldObject* target);
+        bool ScriptCommand_ServerVariable(const ScriptInfo& script, WorldObject* source, WorldObject* target);
+        bool ScriptCommand_CreatureSpells(const ScriptInfo& script, WorldObject* source, WorldObject* target);
+        bool ScriptCommand_RemoveGuardians(const ScriptInfo& script, WorldObject* source, WorldObject* target);
+        bool ScriptCommand_AddSpellCooldown(const ScriptInfo& script, WorldObject* source, WorldObject* target);
+        bool ScriptCommand_RemoveSpellCooldown(const ScriptInfo& script, WorldObject* source, WorldObject* target);
+        bool ScriptCommand_SetReactState(const ScriptInfo& script, WorldObject* source, WorldObject* target);
+        bool ScriptCommand_StartWaypoints(const ScriptInfo& script, WorldObject* source, WorldObject* target);
+        bool ScriptCommand_StartMapEvent(const ScriptInfo& script, WorldObject* source, WorldObject* target);
+        bool ScriptCommand_EndMapEvent(const ScriptInfo& script, WorldObject* source, WorldObject* target);
+        bool ScriptCommand_AddMapEventTarget(const ScriptInfo& script, WorldObject* source, WorldObject* target);
+        bool ScriptCommand_RemoveMapEventTarget(const ScriptInfo& script, WorldObject* source, WorldObject* target);
+        bool ScriptCommand_SetMapEventData(const ScriptInfo& script, WorldObject* source, WorldObject* target);
+        bool ScriptCommand_SendMapEvent(const ScriptInfo& script, WorldObject* source, WorldObject* target);
+        bool ScriptCommand_SetDefaultMovement(const ScriptInfo& script, WorldObject* source, WorldObject* target);
+        bool ScriptCommand_StartScriptForAll(const ScriptInfo& script, WorldObject* source, WorldObject* target);
+        bool ScriptCommand_EditMapEvent(const ScriptInfo& script, WorldObject* source, WorldObject* target);
+        bool ScriptCommand_FailQuest(const ScriptInfo& script, WorldObject* source, WorldObject* target);
+        bool ScriptCommand_RespawnCreature(const ScriptInfo& script, WorldObject* source, WorldObject* target);
+        bool ScriptCommand_AssistUnit(const ScriptInfo& script, WorldObject* source, WorldObject* target);
+        bool ScriptCommand_CombatStop(const ScriptInfo& script, WorldObject* source, WorldObject* target);
+        bool ScriptCommand_AddAura(const ScriptInfo& script, WorldObject* source, WorldObject* target);
+        bool ScriptCommand_AddThreat(const ScriptInfo& script, WorldObject* source, WorldObject* target);
+
+        // Add any new script command functions to the array.
+        const ScriptCommandFunction m_ScriptCommands[SCRIPT_COMMAND_MAX] =
+        {
+            &Map::ScriptCommand_Talk,                   // 0
+            &Map::ScriptCommand_Emote,                  // 1
+            &Map::ScriptCommand_FieldSet,               // 2
+            &Map::ScriptCommand_MoveTo,                 // 3
+            &Map::ScriptCommand_ModifyFlags,            // 4
+            &Map::ScriptCommand_InterruptCasts,         // 5
+            &Map::ScriptCommand_TeleportTo,             // 6
+            &Map::ScriptCommand_QuestExplored,          // 7
+            &Map::ScriptCommand_KillCredit,             // 8
+            &Map::ScriptCommand_RespawnGameObject,      // 9
+            &Map::ScriptCommand_SummonCreature,         // 10
+            &Map::ScriptCommand_OpenDoor,               // 11
+            &Map::ScriptCommand_CloseDoor,              // 12
+            &Map::ScriptCommand_ActivateGameObject,     // 13
+            &Map::ScriptCommand_RemoveAura,             // 14
+            &Map::ScriptCommand_CastSpell,              // 15
+            &Map::ScriptCommand_PlaySound,              // 16
+            &Map::ScriptCommand_CreateItem,             // 17
+            &Map::ScriptCommand_DespawnCreature,        // 18
+            &Map::ScriptCommand_SetEquipment,           // 19
+            &Map::ScriptCommand_SetMovementType,        // 20
+            &Map::ScriptCommand_SetActiveObject,        // 21
+            &Map::ScriptCommand_SetFaction,             // 22
+            &Map::ScriptCommand_Morph,                  // 23
+            &Map::ScriptCommand_Mount,                  // 24
+            &Map::ScriptCommand_SetRun,                 // 25
+            &Map::ScriptCommand_AttackStart,            // 26
+            &Map::ScriptCommand_UpdateEntry,            // 27
+            &Map::ScriptCommand_SetStandState,          // 28
+            &Map::ScriptCommand_ModifyThreat,           // 29
+            &Map::ScriptCommand_SendTaxiPath,           // 30
+            &Map::ScriptCommand_TerminateScript,        // 31
+            &Map::ScriptCommand_TerminateCondition,     // 32
+            &Map::ScriptCommand_Evade,                  // 33
+            &Map::ScriptCommand_SetHomePosition,        // 34
+            &Map::ScriptCommand_TurnTo,                 // 35
+            &Map::ScriptCommand_MeetingStone,           // 36
+            &Map::ScriptCommand_SetData,                // 37
+            &Map::ScriptCommand_SetData64,              // 38
+            &Map::ScriptCommand_StartScript,            // 39
+            &Map::ScriptCommand_RemoveItem,             // 40
+            &Map::ScriptCommand_RemoveGameObject,       // 41
+            &Map::ScriptCommand_SetMeleeAttack,         // 42
+            &Map::ScriptCommand_SetCombatMovement,      // 43
+            &Map::ScriptCommand_SetPhase,               // 44
+            &Map::ScriptCommand_SetPhaseRandom,         // 45
+            &Map::ScriptCommand_SetPhaseRange,          // 46
+            &Map::ScriptCommand_Flee,                   // 47
+            &Map::ScriptCommand_DealDamage,             // 48
+            &Map::ScriptCommand_ZoneCombatPulse,        // 49
+            &Map::ScriptCommand_CallForHelp,            // 50
+            &Map::ScriptCommand_SetSheath,              // 51
+            &Map::ScriptCommand_Invincibility,          // 52
+            &Map::ScriptCommand_GameEvent,              // 53
+            &Map::ScriptCommand_ServerVariable,         // 54
+            &Map::ScriptCommand_CreatureSpells,         // 55
+            &Map::ScriptCommand_RemoveGuardians,        // 56
+            &Map::ScriptCommand_AddSpellCooldown,       // 57
+            &Map::ScriptCommand_RemoveSpellCooldown,    // 58
+            &Map::ScriptCommand_SetReactState,          // 59
+            &Map::ScriptCommand_StartWaypoints,         // 60
+            &Map::ScriptCommand_StartMapEvent,          // 61
+            &Map::ScriptCommand_EndMapEvent,            // 62
+            &Map::ScriptCommand_AddMapEventTarget,      // 63
+            &Map::ScriptCommand_RemoveMapEventTarget,   // 64
+            &Map::ScriptCommand_SetMapEventData,        // 65
+            &Map::ScriptCommand_SendMapEvent,           // 66
+            &Map::ScriptCommand_SetDefaultMovement,     // 67
+            &Map::ScriptCommand_StartScriptForAll,      // 68
+            &Map::ScriptCommand_EditMapEvent,           // 69
+            &Map::ScriptCommand_FailQuest,              // 70
+            &Map::ScriptCommand_RespawnCreature,        // 71
+            &Map::ScriptCommand_AssistUnit,             // 72
+            &Map::ScriptCommand_CombatStop,             // 73
+            &Map::ScriptCommand_AddAura,                // 74
+            &Map::ScriptCommand_AddThreat,              // 75
+        };
+
     public:
         CreatureGroupHolderType CreatureGroupHolder;
         uint32 GetLastPlayerLeftTime() const { return _lastPlayerLeftTime; }

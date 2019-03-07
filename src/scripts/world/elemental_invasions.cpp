@@ -168,6 +168,9 @@ struct npc_invaderAI : ScriptedAI
 {
     explicit npc_invaderAI(Creature* pCreature, uint32 eventIndex) : ScriptedAI(pCreature), m_uiEventIndex(eventIndex)
     {
+        m_creature->SetRespawnRadius(30.f);
+        m_creature->GetMotionMaster()->Clear(false, true);
+        m_creature->GetMotionMaster()->MoveRandom(true, 30.0f);
         npc_invaderAI::Reset();
     }
 
@@ -214,7 +217,7 @@ struct npc_invaderAI : ScriptedAI
         case EVENT_IND_FIRE:
             if (m_uiShieldTimer < uiDiff)
             {
-                DoCastSpellIfCan(m_creature, SPELL_FIRE_SHIELD, CAST_AURA_NOT_PRESENT);
+                DoCastSpellIfCan(m_creature, SPELL_FIRE_SHIELD, CF_AURA_NOT_PRESENT);
                 m_uiShieldTimer = urand(6000, 8000);
             }
             else
@@ -235,7 +238,7 @@ struct npc_invaderAI : ScriptedAI
         case EVENT_IND_AIR:
             if (m_uiShieldTimer < uiDiff)
             {
-                DoCastSpellIfCan(m_creature, SPELL_LIGHTN_SHIELD, CAST_AURA_NOT_PRESENT);
+                DoCastSpellIfCan(m_creature, SPELL_LIGHTN_SHIELD, CF_AURA_NOT_PRESENT);
                 m_uiShieldTimer = urand(10000, 12000);
             }
             else

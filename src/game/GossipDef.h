@@ -127,6 +127,13 @@ enum Poi_Icon
     ICON_POI_REDHORSE           =   40                      // Red Horse
 };
 
+enum OptionVendorMenuType
+{
+    VENDOR_MENU_NORMAL   = 0x1,
+    VENDOR_MENU_TEMPLATE = 0x2,
+    VENDOR_MENU_ALL      = 0x3,
+};
+
 struct GossipMenuItem
 {
     uint8       m_gIcon;
@@ -282,7 +289,7 @@ class MANGOS_DLL_SPEC PlayerMenu
         /*********************************************************/
         void SendQuestGiverStatus(uint8 questStatus, ObjectGuid npcGUID);
 
-        void SendQuestGiverQuestList(QEmote eEmote, const std::string& Title, ObjectGuid npcGUID);
+        void SendQuestGiverQuestList(QEmote eEmote, const std::string& Title, ObjectGuid guid);
 
         void SendQuestQueryResponse(Quest const *pQuest);
         void SendQuestGiverQuestDetails(Quest const *pQuest, ObjectGuid npcGUID, bool ActivateAccept);

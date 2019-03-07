@@ -108,13 +108,6 @@ void WorldSession::HandleTrainerListOpcode(WorldPacket & recv_data)
     SendTrainerList(guid);
 }
 
-void WorldSession::SendTrainerList(ObjectGuid guid)
-{
-    std::string str = GetMangosString(LANG_NPC_TAINER_HELLO);
-    SendTrainerList(guid, str);
-}
-
-
 static void SendTrainerSpellHelper(WorldPacket& data, TrainerSpell const* tSpell, uint32 triggerSpell, TrainerSpellState state, float fDiscountMod, bool can_learn_primary_prof)
 {
     SpellEntry const *triggerInfo = sSpellMgr.GetSpellEntry(triggerSpell);
@@ -159,7 +152,7 @@ static void SendTrainerSpellHelper(WorldPacket& data, TrainerSpell const* tSpell
     data << uint32(0);
 }
 
-void WorldSession::SendTrainerList(ObjectGuid guid, const std::string& strTitle)
+void WorldSession::SendTrainerList(ObjectGuid guid)
 {
     DEBUG_LOG("WORLD: SendTrainerList");
 
@@ -190,6 +183,21 @@ void WorldSession::SendTrainerList(ObjectGuid guid, const std::string& strTitle)
 
     uint32 maxcount = (cSpells ? cSpells->spellList.size() : 0) + (tSpells ? tSpells->spellList.size() : 0);
     uint32 trainer_type = cSpells && cSpells->trainerType ? cSpells->trainerType : (tSpells ? tSpells->trainerType : 0);
+
+    std::string strTitle;
+    if (TrainerGreetingLocale const *trainerGreeting = sObjectMgr.GetTrainerGreetingLocale(guid.GetEntry()))
+    {
+        int locale_idx = GetSessionDbLocaleIndex();
+
+        if ((int32)trainerGreeting->Content.size() > locale_idx + 1 && !trainerGreeting->Content[locale_idx + 1].empty())
+            strTitle = trainerGreeting->Content[locale_idx + 1];
+        else
+            strTitle = trainerGreeting->Content[0];
+    }
+    else
+    {
+        strTitle = GetMangosString(LANG_NPC_TAINER_HELLO);
+    }
 
     WorldPacket data(SMSG_TRAINER_LIST, 8 + 4 + 4 + maxcount * 38 + strTitle.size() + 1);
     data << ObjectGuid(guid);
@@ -248,6 +256,23 @@ void WorldSession::SendTrainerList(ObjectGuid guid, const std::string& strTitle)
     SendPacket(&data);
 }
 
+void WorldSession::SendTrainingSuccess(ObjectGuid guid, uint32 spellId)
+{
+    WorldPacket data(SMSG_TRAINER_BUY_SUCCEEDED, 12);
+    data << ObjectGuid(guid);
+    data << uint32(spellId);                                // should be same as in packet from client
+    SendPacket(&data);
+}
+
+void WorldSession::SendTrainingFailure(ObjectGuid guid, uint32 serviceId, uint32 errorCode)
+{
+    WorldPacket data(SMSG_TRAINER_BUY_FAILED, 16);
+    data << ObjectGuid(guid);
+    data << uint32(serviceId);
+    data << uint32(errorCode);
+    SendPacket(&data);
+}
+
 void WorldSession::HandleTrainerBuySpellOpcode(WorldPacket & recv_data)
 {
     ObjectGuid guid;
@@ -257,77 +282,60 @@ void WorldSession::HandleTrainerBuySpellOpcode(WorldPacket & recv_data)
     DEBUG_LOG("WORLD: Received CMSG_TRAINER_BUY_SPELL Trainer: %s, learn spell id is: %u", guid.GetString().c_str(), spellId);
 
     Creature *unit = GetPlayer()->GetNPCIfCanInteractWith(guid, UNIT_NPC_FLAG_TRAINER);
-    if (!unit)
+
+    if (!unit || !unit->IsTrainerOf(_player, true) || !unit->IsWithinLOSInMap(_player))
     {
+        SendTrainingFailure(guid, spellId, TRAIN_FAIL_UNAVAILABLE);
         DEBUG_LOG("WORLD: HandleTrainerBuySpellOpcode - %s not found or you can't interact with him.", guid.GetString().c_str());
         return;
     }
 
-    if (!unit->IsTrainerOf(_player, true))
-        return;
-
-    // check LOS
-    if (!unit->IsWithinLOSInMap(_player))
-    {    
-	unit->MonsterWhisper("I can't train you when you're hiding like that", _player);
-	return;
-    }
-
-    // check present spell in trainer spell list
+    // Check if the spell is present in the trainer's spell list.
     TrainerSpellData const* cSpells = unit->GetTrainerSpells();
     TrainerSpellData const* tSpells = unit->GetTrainerTemplateSpells();
 
     if (!cSpells && !tSpells)
+    {
+        SendTrainingFailure(guid, spellId, TRAIN_FAIL_UNAVAILABLE);
         return;
-
-    // Try find spell in npc_trainer
+    }
+        
+    // Try to find the spell in npc_trainer.
     TrainerSpell const* trainer_spell = cSpells ? cSpells->Find(spellId) : NULL;
 
-    // Not found, try find in npc_trainer_template
+    // Not found, try find it in npc_trainer_template.
     if (!trainer_spell && tSpells)
         trainer_spell = tSpells->Find(spellId);
 
     // Not found anywhere, cheating?
     if (!trainer_spell)
+    {
+        SendTrainingFailure(guid, spellId, TRAIN_FAIL_UNAVAILABLE);
         return;
-
-    // can't be learn, cheat? Or double learn with lags...
+    }
+    
+    // Can't be learned, cheat? Or double learn with lags...
     if (_player->GetTrainerSpellState(trainer_spell) != TRAINER_SPELL_GREEN)
+    {
+        SendTrainingFailure(guid, spellId, TRAIN_FAIL_NOT_ENOUGH_SKILL);
         return;
+    }
 
     SpellEntry const *proto = sSpellMgr.GetSpellEntry(trainer_spell->spell);
 
-    // apply reputation discount
+    // Apply reputation discount.
     uint32 nSpellCost = uint32(floor(trainer_spell->spellCost * _player->GetReputationPriceDiscount(unit)));
 
-    // check money requirement
+    // Check money requirement.
     if (_player->GetMoney() < nSpellCost)
+    {
+        SendTrainingFailure(guid, spellId, TRAIN_FAIL_NOT_ENOUGH_MONEY);
         return;
+    }
 
-    GetPlayer()->RemoveAurasWithInterruptFlags(AURA_INTERRUPT_FLAG_TALK); // Removes stealth, feign death ...
-    // Player must get off her high horse before learning
-    _player->Unmount();
+    // All is good. Spell can be learned if we reach this point.
+    _player->RemoveAurasWithInterruptFlags(AURA_INTERRUPT_FLAG_TALK);
     _player->RemoveSpellsCausingAura(SPELL_AURA_MOUNTED);
-
-    _player->ModifyMoney(-int32(nSpellCost));
-
-    WorldPacket data(SMSG_PLAY_SPELL_VISUAL, 12);           // visual effect on trainer
-    data << ObjectGuid(guid);
-    data << uint32(0xB3);                                   // index from SpellVisualKit.dbc
-    SendPacket(&data);
-
-    data.Initialize(SMSG_PLAY_SPELL_IMPACT, 12);            // visual effect on player
-    data << _player->GetObjectGuid();
-    data << uint32(0x016A);                                 // index from SpellVisualKit.dbc
-    SendPacket(&data);
-
-    // learn explicitly to prevent lost money at lags, learning spell will be only show spell animation
-    //[-ZERO] _player->learnSpell(trainer_spell->spell, false);
-
-    data.Initialize(SMSG_TRAINER_BUY_SUCCEEDED, 12);
-    data << ObjectGuid(guid);
-    data << uint32(spellId);                                // should be same as in packet from client
-    SendPacket(&data);
 
     Spell *spell;
     if (proto->SpellVisual == 222)
@@ -338,8 +346,17 @@ void WorldSession::HandleTrainerBuySpellOpcode(WorldPacket & recv_data)
     SpellCastTargets targets;
     targets.setUnitTarget(_player);
 
-    spell->prepare(std::move(targets));
-    spell->update(1); // Update the spell right now. Prevents desynch => take twice the money if you click really fast
+    SpellCastResult cast_result = spell->prepare(std::move(targets));
+    spell->update(1); // Update the spell right now. Prevents desynch => take twice the money if you click really fast.
+
+    // Only charge player if cast of learning spell was successful.
+    if (cast_result == SPELL_CAST_OK)
+    {
+        _player->ModifyMoney(-int32(nSpellCost));
+        SendTrainingSuccess(guid, spellId);
+    }
+    else
+        SendTrainingFailure(guid, spellId, TRAIN_FAIL_UNAVAILABLE);
 }
 
 void WorldSession::HandleGossipHelloOpcode(WorldPacket & recv_data)
@@ -514,11 +531,6 @@ void WorldSession::SendBindPoint(Creature *npc)
 
     // send spell for bind 3286 bind magic
     npc->CastSpell(_player, 3286, true);                    // Bind
-
-    WorldPacket data(SMSG_TRAINER_BUY_SUCCEEDED, (8 + 4));
-    data << npc->GetObjectGuid();
-    data << uint32(3286);                                   // Bind
-    SendPacket(&data);
 
     _player->PlayerTalkClass->CloseGossip();
 }

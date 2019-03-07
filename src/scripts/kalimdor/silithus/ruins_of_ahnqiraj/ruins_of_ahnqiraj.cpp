@@ -1331,7 +1331,6 @@ CreatureAI* GetAI_AntiIntrusion(Creature* pCreature)
     return new npc_antiIntrusionAI(pCreature);
 }
 
-
 CreatureAI* GetAI_Zerran(Creature* pCreature)
 {
     return new ZerranAI(pCreature);

@@ -326,7 +326,7 @@ void WorldSession::HandleItemQuerySingleOpcode(WorldPacket & recv_data)
         data << pProto->Class;
         // client known only 0 subclass (and 1-2 obsolute subclasses)
         data << (pProto->Class == ITEM_CLASS_CONSUMABLE ? uint32(0) : pProto->SubClass);
-        data << Name;
+        data << Name;                                       // max length of any of 4 names: 256 bytes
         data << uint8(0x00);                                //pProto->Name2; // blizz not send name there, just uint8(0x00); <-- \0 = empty string = empty name...
         data << uint8(0x00);                                //pProto->Name3; // blizz not send name there, just uint8(0x00);
         data << uint8(0x00);                                //pProto->Name4; // blizz not send name there, just uint8(0x00);
@@ -432,7 +432,9 @@ void WorldSession::HandleItemQuerySingleOpcode(WorldPacket & recv_data)
         data << pProto->ItemSet;
         data << pProto->MaxDurability;
         data << pProto->Area;
+#if SUPPORTED_CLIENT_BUILD >= CLIENT_BUILD_1_12_1
         data << pProto->Map;                                // Added in 1.12.x & 2.0.1 client branch
+#endif
         data << pProto->BagFamily;
         SendPacket(&data);
     }
@@ -463,11 +465,14 @@ void WorldSession::HandleReadItemOpcode(WorldPacket & recv_data)
         if (msg == EQUIP_ERR_OK)
         {
             data.Initialize(SMSG_READ_ITEM_OK, 8);
+            data << ObjectGuid(pItem->GetObjectGuid());
             DETAIL_LOG("STORAGE: Item page sent");
         }
         else
         {
-            data.Initialize(SMSG_READ_ITEM_FAILED, 8);
+            data.Initialize(SMSG_READ_ITEM_FAILED, 8 + 1);
+            data << ObjectGuid(pItem->GetObjectGuid());
+            data << uint8(0);                       // 0..2, read failure reason? if == 1, use next command
             DETAIL_LOG("STORAGE: Unable to read item");
             _player->SendEquipError(msg, pItem, NULL);
         }
@@ -527,6 +532,13 @@ void WorldSession::HandleSellItemOpcode(WorldPacket & recv_data)
 
     // prevent sell not owner item
     if (_player->GetObjectGuid() != pItem->GetOwnerGuid())
+    {
+        _player->SendSellError(SELL_ERR_CANT_SELL_ITEM, pCreature, itemGuid, 0);
+        return;
+    }
+
+    // prevent selling item in bank slot
+    if (_player->IsBankPos(pItem->GetPos())) 
     {
         _player->SendSellError(SELL_ERR_CANT_SELL_ITEM, pCreature, itemGuid, 0);
         return;
@@ -733,7 +745,7 @@ void WorldSession::HandleListInventoryOpcode(WorldPacket & recv_data)
     SendListInventory(guid);
 }
 
-void WorldSession::SendListInventory(ObjectGuid vendorguid)
+void WorldSession::SendListInventory(ObjectGuid vendorguid, uint8 menu_type)
 {
     DEBUG_LOG("WORLD: Sent SMSG_LIST_INVENTORY");
 
@@ -754,8 +766,8 @@ void WorldSession::SendListInventory(ObjectGuid vendorguid)
     if (!pCreature->IsStopped())
         pCreature->StopMoving();
 
-    VendorItemData const* vItems = pCreature->GetVendorItems();
-    VendorItemData const* tItems = pCreature->GetVendorTemplateItems();
+    VendorItemData const* vItems = menu_type & VENDOR_MENU_NORMAL ? pCreature->GetVendorItems() : nullptr;
+    VendorItemData const* tItems = menu_type & VENDOR_MENU_TEMPLATE ? pCreature->GetVendorTemplateItems() : nullptr;
 
     if (!vItems && !tItems)
     {
@@ -849,6 +861,13 @@ void WorldSession::HandleAutoStoreBagItemOpcode(WorldPacket & recv_data)
         return;
     }
 
+    // cheating: check if source bag / item or destination bag is in bank and player can't use bank
+    if (_player->IsBankPos(srcbag, srcslot) || dstbag >= BANK_SLOT_BAG_START && dstbag < BANK_SLOT_BAG_END)
+    {
+        if (!CanUseBank())
+            return;
+    }
+
     uint16 src = pItem->GetPos();
 
     // check unequip potability for equipped items and bank bags
@@ -915,8 +934,14 @@ void WorldSession::HandleBuyBankSlotOpcode(WorldPacket& recvPacket)
     ObjectGuid guid;
     recvPacket >> guid;
 
+    WorldPacket data(SMSG_BUY_BANK_SLOT_RESULT, 4);
+
     if (!CheckBanker(guid))
+    {
+        data << uint32(ERR_BANKSLOT_NOTBANKER);
+        SendPacket(&data);
         return;
+    }
 
     uint32 slot = _player->GetBankBagSlotCount();
 
@@ -926,8 +951,6 @@ void WorldSession::HandleBuyBankSlotOpcode(WorldPacket& recvPacket)
     DETAIL_LOG("PLAYER: Buy bank bag slot, slot number = %u", slot);
 
     BankBagSlotPricesEntry const* slotEntry = sBankBagSlotPricesStore.LookupEntry(slot);
-
-    WorldPacket data(SMSG_BUY_BANK_SLOT_RESULT, 4);
 
     if (!slotEntry)
     {
@@ -947,9 +970,6 @@ void WorldSession::HandleBuyBankSlotOpcode(WorldPacket& recvPacket)
 
     _player->SetBankBagSlotCount(slot);
     _player->ModifyMoney(-int32(price));
-
-    data << uint32(ERR_BANKSLOT_OK);
-    SendPacket(&data);
 }
 
 void WorldSession::HandleAutoBankItemOpcode(WorldPacket& recvPacket)
@@ -1108,7 +1128,7 @@ void WorldSession::HandleItemNameQueryOpcode(WorldPacket & recv_data)
         WorldPacket data(SMSG_ITEM_NAME_QUERY_RESPONSE, (4 + 10));
         data << uint32(pProto->ItemId);
         data << Name;
-        data << uint32(pProto->InventoryType);
+        //data << uint32(pProto->InventoryType);    [-ZERO]
         SendPacket(&data);
         return;
     }
@@ -1199,7 +1219,7 @@ void WorldSession::HandleWrapItemOpcode(WorldPacket& recv_data)
         return;
     }
 
-    CharacterDatabase.BeginTransaction();
+    CharacterDatabase.BeginTransaction(_player->GetGUIDLow());
     CharacterDatabase.PExecute("INSERT INTO character_gifts VALUES ('%u', '%u', '%u', '%u')", item->GetOwnerGuid().GetCounter(), item->GetGUIDLow(), item->GetEntry(), item->GetUInt32Value(ITEM_FIELD_FLAGS));
     item->SetEntry(gift->GetEntry());
 
@@ -1230,38 +1250,12 @@ void WorldSession::HandleWrapItemOpcode(WorldPacket& recv_data)
 
     if (item->GetState() == ITEM_NEW)                       // save new item, to have alway for `character_gifts` record in `item_instance`
     {
-        // after save it will be impossible to remove the item from the queue
-        item->RemoveFromUpdateQueueOf(_player);
-        item->SaveToDB();                                   // item gave inventory record unchanged and can be save standalone
+        _player->SaveInventoryAndGoldToDB();
     }
     CharacterDatabase.CommitTransaction();
 
     uint32 count = 1;
     _player->DestroyItemCount(gift, count, true);
-}
-
-void WorldSession::HandleCancelTempEnchantmentOpcode(WorldPacket& recv_data)
-{
-    DEBUG_LOG("WORLD: CMSG_CANCEL_TEMP_ENCHANTMENT");
-
-    uint32 eslot;
-
-    recv_data >> eslot;
-
-    // apply only to equipped item
-    if (!Player::IsEquipmentPos(INVENTORY_SLOT_BAG_0, eslot))
-        return;
-
-    Item* item = GetPlayer()->GetItemByPos(INVENTORY_SLOT_BAG_0, eslot);
-
-    if (!item)
-        return;
-
-    if (!item->GetEnchantmentId(TEMP_ENCHANTMENT_SLOT))
-        return;
-
-    GetPlayer()->ApplyEnchantment(item, TEMP_ENCHANTMENT_SLOT, false);
-    item->ClearEnchantment(TEMP_ENCHANTMENT_SLOT);
 }
 
 bool WorldSession::CanUseBank(ObjectGuid bankerGUID) const

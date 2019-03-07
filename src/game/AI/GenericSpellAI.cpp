@@ -68,7 +68,7 @@ std::vector<MobSpellEntry> GenericSpellMobData;
 CreatureAI* GetAI_GenericSpellAI(Creature* pCreature);
 GenericAISpell BuildGenericAISpell(uint32 spellId, uint32 minCD, uint32 maxCD, uint32 target);
 void LoadSpellCacheData(GenericAISpell* spellToModify, SpellEntry const* spellInfos);
-void LoadGenericAISpellsData();
+//void LoadGenericAISpellsData();
 
 struct MANGOS_DLL_DECL GenericSpellMob : public ScriptedAI
 {
@@ -219,7 +219,7 @@ struct MANGOS_DLL_DECL GenericSpellMob : public ScriptedAI
                     }
                     case GENERIC_TARGET_FRIEND_NEED_HEAL:
                     {
-                        target = DoSelectLowestHpFriendly(it->maxRange, it->healValue / 4);
+                        target = m_creature->DoSelectLowestHpFriendly(it->maxRange, it->healValue / 4);
                         break;
                     }
                     case GENERIC_TARGET_FRIEND_DISPELL_CC:
@@ -419,7 +419,7 @@ void LoadSpellCacheData(GenericAISpell* spellToModify, SpellEntry const* spellIn
     spellToModify->targetAuraState = spellInfos->TargetAuraState;
 
 #ifdef DEBUG_ON
-    sLog.outString(">> Loading Spell %s (id=%u) !", spellInfos->SpellName[2], spellToModify->spellId);
+    sLog.outString(">> Loading Spell %s (id=%u) !", spellInfos->SpellName[2].c_str(), spellToModify->spellId);
 #endif
 
     // Check de la portee
@@ -489,6 +489,7 @@ void LoadSpellCacheData(GenericAISpell* spellToModify, SpellEntry const* spellIn
             switch (spellInfos->Effect[i])
             {
                 case SPELL_EFFECT_APPLY_AURA:
+                case SPELL_EFFECT_APPLY_AREA_AURA_PARTY:
                 {
                     switch (spellInfos->EffectApplyAuraName[i])
                     {
@@ -499,6 +500,15 @@ void LoadSpellCacheData(GenericAISpell* spellToModify, SpellEntry const* spellIn
                     }
                     spellToModify->spellFlags |= SPELL_FLAG_APPLY_AURA;
                     break;
+                }
+                case SPELL_EFFECT_SUMMON_GUARDIAN:
+                {
+                    int32 duration = GetSpellDuration(spellInfos);
+                    if (duration > 0) 
+                    {
+                        spellToModify->minCD = duration;
+                        spellToModify->maxCD = duration;
+                    }
                 }
             }
         }
@@ -521,7 +531,7 @@ void LoadSpellCacheData(GenericAISpell* spellToModify, SpellEntry const* spellIn
 #endif
     }
 }
-
+/* this was never used
 void LoadGenericAISpellsData()
 {
     GenericSpellMobData.clear();
@@ -563,7 +573,7 @@ void LoadGenericAISpellsData()
         sLog.outString(">> Loaded 0 mob spells datas. DB table `creature_spells` is empty.");
     }
 }
-
+*/
 void AddSC_generic_spell_ai()
 {
     Script *newscript;
@@ -572,5 +582,5 @@ void AddSC_generic_spell_ai()
     newscript->Name = "generic_spell_ai";
     newscript->GetAI = &GetAI_GenericSpellAI;
     newscript->RegisterSelf();
-    LoadGenericAISpellsData();
+    //LoadGenericAISpellsData();
 }

@@ -59,7 +59,7 @@ void npc_reginald_windsorAI::ResetCreature()
 void npc_reginald_windsorAI::JustDied(Unit* /*pKiller*/)
 {
     PokeRowe();
-    m_creature->ForcedDespawn(1500);
+    m_creature->DespawnOrUnsummon(1500);
 }
 
 void npc_reginald_windsorAI::PokeRowe()
@@ -80,7 +80,7 @@ void npc_reginald_windsorAI::PokeRowe()
 
 void npc_reginald_windsorAI::DoTalk(Unit* pWho, bool yell, Unit* pTarget)
 {
-    yell ? pWho->MonsterYell(NOST_TEXT(WindsorTalk[IDSpeech]), 0, pTarget) : pWho->MonsterSay(NOST_TEXT(WindsorTalk[IDSpeech]), 0, pTarget);
+    yell ? pWho->MonsterYell(WindsorTalk[IDSpeech], 0, pTarget) : pWho->MonsterSay(WindsorTalk[IDSpeech], 0, pTarget);
     IDSpeech++;
 }
 
@@ -188,6 +188,28 @@ void npc_reginald_windsorAI::UpdateAI_corpse(const uint32 uiDiff)
     }
 }
 
+uint32 GetRandomGuardText()
+{
+    switch (urand(0, 7))
+    {
+        case 0:
+            return 8167; // Light be with you, sir.
+        case 1:
+            return 8170; // You are an inspiration to us all, sir.
+        case 2:
+            return 8172; // There walks a hero.
+        case 3:
+            return 8175; // Make way!
+        case 4:
+            return 8177; // We are but dirt beneath your feet, sir.
+        case 5:
+            return 8180; // A moment I shall remember for always.
+        case 6:
+            return 8183; // ...nerves of thorium.
+    }
+    return 8184; // A living legend... 
+}
+
 void npc_reginald_windsorAI::MoveInLineOfSight(Unit* Victim)
 {
     if (Victim && Victim->isAlive())
@@ -208,7 +230,7 @@ void npc_reginald_windsorAI::MoveInLineOfSight(Unit* Victim)
                 {
                     Victim->SetFacingToObject(m_creature);
                     Victim->HandleEmote(EMOTE_ONESHOT_SALUTE);
-                    Victim->MonsterSay(NOST_TEXT(urand(40, 45)));
+                    Victim->MonsterSay(GetRandomGuardText());
                     int Var = 0;
                     while (GardesGUIDs[Var] && Var < 29)
                         Var++;
@@ -232,7 +254,7 @@ void npc_reginald_windsorAI::UpdateAI(const uint32 uiDiff)
     if (m_uiDespawnTimer < uiDiff)
     {
         PokeRowe();
-        m_creature->ForcedDespawn();
+        m_creature->DespawnOrUnsummon();
     }
     else
         m_uiDespawnTimer -= uiDiff;
@@ -316,7 +338,7 @@ void npc_reginald_windsorAI::UpdateAI(const uint32 uiDiff)
         case 0:
             m_uiDespawnTimer = 20 * MINUTE*IN_MILLISECONDS;
             m_creature->SetFacingTo(0.659f);
-            m_creature->MonsterYellToZone(NOST_TEXT(235));
+            m_creature->MonsterYellToZone(8109);
             m_creature->HandleEmote(EMOTE_ONESHOT_SHOUT);
             Timer = 5000;
             break;
@@ -339,7 +361,7 @@ void npc_reginald_windsorAI::UpdateAI(const uint32 uiDiff)
             {
                 Onyxia->SetDisplayId(11686);
                 Onyxia->SetFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_NOT_SELECTABLE);
-                Onyxia->MonsterYellToZone(NOST_TEXT(WindsorTalk[IDSpeech]));
+                Onyxia->MonsterYellToZone(WindsorTalk[IDSpeech]);
                 IDSpeech++;
             }
             if (Creature* General = m_creature->FindNearestCreature(NPC_MARCUS_JONATHAN, 150.0f))
@@ -763,11 +785,11 @@ bool GossipHello_npc_reginald_windsor(Player* pPlayer, Creature* pCreature)
     if (auto pWindsorEventAI = static_cast<npc_reginald_windsorAI*>(pCreature->AI()))
     {
         if (pPlayer == pWindsorEventAI->GetPlayer() && pWindsorEventAI->QuestAccepted)
-            pPlayer->ADD_GOSSIP_ITEM(GOSSIP_ICON_CHAT, "Me and my friends are ready. Let's stop this masquerade!", GOSSIP_SENDER_MAIN, GOSSIP_ACTION_INFO_DEF);
+            pPlayer->ADD_GOSSIP_ITEM(GOSSIP_ICON_CHAT, 8256, GOSSIP_SENDER_MAIN, GOSSIP_ACTION_INFO_DEF);
         else if (pCreature->isQuestGiver())
             pPlayer->PrepareQuestMenu(pCreature->GetGUID());
 
-        pPlayer->SEND_GOSSIP_MENU(125800, pCreature->GetGUID());
+        pPlayer->SEND_GOSSIP_MENU(5633, pCreature->GetGUID());
     }
     return true;
 }
@@ -949,6 +971,57 @@ CreatureAI* GetAI_npc_squire_rowe(Creature* pCreature)
     return new npc_squire_roweAI(pCreature);
 }
 
+static time_t globalWindsorLastSpawnTime = time_t(0);
+
+bool AreaTrigger_at_stormwind_gates(Player* pPlayer, AreaTriggerEntry const* /*pAt*/)
+{
+    // Before patch 1.12, Windsor was spawned from the AreaTrigger at the Stormwind gates.
+    // Squire Rowe was added in patch 1.12, confirmed by both Allakhazam and Thottbot comments.
+    // His creature Id is also in the 1.12 range, and his display Id doesn't exist in prior clients.
+    if (sWorld.GetWowPatch() >= WOW_PATCH_112 && sWorld.getConfig(CONFIG_BOOL_ACCURATE_PVE_EVENTS))
+        return false;
+
+    // If player is dead, GM mode is ON, quest complete or no quest.
+    if (!pPlayer || !pPlayer->isAlive() || pPlayer->isGameMaster() || !pPlayer->IsCurrentQuest(QUEST_STORMWIND_RENDEZVOUS))
+        return false;
+
+    // Cooldown before Windsor can be spawned again.
+    if (globalWindsorLastSpawnTime + 15 * MINUTE > sWorld.GetGameTime())
+        return false;
+
+    // Check if Windsor is already spawned.
+    if (GetClosestCreatureWithEntry(pPlayer, NPC_REGINALD_WINDSOR, 200.0f))
+        return false;
+
+    if (Creature* pWindsor = pPlayer->SummonCreature(NPC_REGINALD_WINDSOR,
+        WindsorSummon.x,
+        WindsorSummon.y,
+        WindsorSummon.z,
+        WindsorSummon.o, TEMPSUMMON_MANUAL_DESPAWN, 1.5 * HOUR * IN_MILLISECONDS, true))
+    {
+        auto pWindsorAI = static_cast<npc_reginald_windsorAI*>(pWindsor->AI());
+
+        if (pWindsorAI)
+        {
+            pWindsorAI->playerGUID = pPlayer->GetGUID();
+            pWindsorAI->m_squireRoweGuid = ObjectGuid();
+        }
+
+        pWindsor->Mount(MOUNT_WINDSOR);
+        pWindsor->SetWalk(false);
+        pWindsor->SetSpeedRate(MOVE_RUN, 1.0f, true);
+        pWindsor->GetMotionMaster()->MovePoint(0, WindsorDeplacement[0].x, WindsorDeplacement[0].y, WindsorDeplacement[0].z, MOVE_PATHFINDING);
+        pWindsor->SetRespawnDelay(100000000);
+        pWindsor->RemoveFlag(UNIT_NPC_FLAGS, UNIT_NPC_FLAG_QUESTGIVER);
+
+        globalWindsorLastSpawnTime = sWorld.GetGameTime();
+
+        return true;
+    }
+
+    return false;
+}
+
 void AddSC_quest_stormwind_rendezvous()
 {
     Script *pNewScript;
@@ -966,5 +1039,10 @@ void AddSC_quest_stormwind_rendezvous()
     pNewScript->pQuestAcceptNPC = &QuestAccept_npc_reginald_windsor;
     pNewScript->pGossipHello = &GossipHello_npc_reginald_windsor;
     pNewScript->pGossipSelect = &GossipSelect_npc_reginald_windsor;
+    pNewScript->RegisterSelf();
+
+    pNewScript = new Script;
+    pNewScript->Name = "at_stormwind_gates";
+    pNewScript->pAreaTrigger = &AreaTrigger_at_stormwind_gates;
     pNewScript->RegisterSelf();
 }

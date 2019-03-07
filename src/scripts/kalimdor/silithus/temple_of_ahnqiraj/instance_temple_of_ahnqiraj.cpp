@@ -163,7 +163,7 @@ bool instance_temple_of_ahnqiraj::IsEncounterInProgress() const
 {
     for (uint8 i = 0; i < MAX_ENCOUNTER; ++i)
     {
-        if (m_auiEncounter[i] == IN_PROGRESS)
+        if (m_auiEncounter[i] == IN_PROGRESS || m_auiEncounter[i] == SPECIAL)
             return true;
     }
 
@@ -332,12 +332,12 @@ void instance_temple_of_ahnqiraj::SetData(uint32 uiType, uint32 uiData)
         if (uiData == SPECIAL)
         {
             ++m_uiBugTrioDeathCount;
-            if (m_uiBugTrioDeathCount == 2)
+            if (m_uiBugTrioDeathCount >= 3)
                 SetData(TYPE_BUG_TRIO, DONE);
             // don't store any special data
             break;
         }
-        if (uiData == FAIL)
+        if (uiData == IN_PROGRESS)
             m_uiBugTrioDeathCount = 0;
         m_auiEncounter[uiType] = uiData;
         break;
@@ -359,10 +359,7 @@ void instance_temple_of_ahnqiraj::SetData(uint32 uiType, uint32 uiData)
             return;
         m_auiEncounter[uiType] = uiData;
         if (GameObject* pGo = GetSingleGameObjectFromStorage(GO_TWINS_ENTER_DOOR)) {
-            if (uiData == IN_PROGRESS) {
-                DoResetDoor(pGo->GetGUID());
-            }
-            else {
+            if (uiData != IN_PROGRESS) {
                 DoOpenDoor(pGo->GetGUID());
             }
         }
@@ -517,6 +514,17 @@ uint32 instance_temple_of_ahnqiraj::GetData(uint32 uiType)
     return m_auiEncounter[uiType];
 }
 
+bool instance_temple_of_ahnqiraj::CheckConditionCriteriaMeet(Player const* player, uint32 map_id, WorldObject const* source, uint32 instance_condition_id) const
+{
+    if (instance_condition_id >= MAX_ENCOUNTER)
+        return false;
+
+    if (m_auiEncounter[instance_condition_id] == DONE)
+        return true;
+    else
+        return false;
+}
+
 bool AreaTrigger_at_temple_ahnqiraj(Player* pPlayer, const AreaTriggerEntry* pAt)
 {
     if (pAt->id == AREATRIGGER_TWIN_EMPERORS || pAt->id == AREATRIGGER_SARTURA)
@@ -644,7 +652,7 @@ bool instance_temple_of_ahnqiraj::KillPlayersInStomach()
             }
 
             if (p->isAlive()) {
-                p->KillPlayer();
+                p->DealDamage(p, p->GetHealth(), nullptr, DIRECT_DAMAGE, SPELL_SCHOOL_MASK_NORMAL, nullptr, false);
             }
             if (p->HasAura(SPELL_DIGESTIVE_ACID)) {
                 p->RemoveAurasDueToSpell(SPELL_DIGESTIVE_ACID);
@@ -801,7 +809,7 @@ struct AI_QirajiMindslayer : public ScriptedAI {
             }
         }
         if (closestPlayer) {
-            DoCastSpellIfCan(closestPlayer, 26049, CAST_TRIGGERED | CAST_INTERRUPT_PREVIOUS);
+            DoCastSpellIfCan(closestPlayer, 26049, CF_TRIGGERED | CF_INTERRUPT_PREVIOUS);
         }
     }
 
@@ -854,21 +862,6 @@ InstanceData* GetInstanceData_instance_temple_of_ahnqiraj(Map* pMap)
     return new instance_temple_of_ahnqiraj(pMap);
 }
 
-bool GossipHello_npc_Caelestrasz(Player* pPlayer, Creature* pCreature)
-{
-    pPlayer->PrepareQuestMenu(pCreature->GetGUID());
-    if (InstanceData* instData = pCreature->GetInstanceData()) {
-        if (instData->GetData(TYPE_CTHUN) == DONE) {
-            pPlayer->SEND_GOSSIP_MENU(40101, pCreature->GetGUID());
-        }
-        else {
-            pPlayer->SEND_GOSSIP_MENU(40100, pCreature->GetGUID());
-        }
-        return true;
-    }
-    return false;
-}
-
 CreatureAI* GetAI_qirajiMindslayer(Creature* pCreature)
 {
     return new AI_QirajiMindslayer(pCreature);
@@ -886,11 +879,6 @@ void AddSC_instance_temple_of_ahnqiraj()
     pNewScript = new Script;
     pNewScript->Name = "at_temple_ahnqiraj";
     pNewScript->pAreaTrigger = &AreaTrigger_at_temple_ahnqiraj;
-    pNewScript->RegisterSelf();
-
-    pNewScript = new Script;
-    pNewScript->Name = "aq_caelestrasz_ai";
-    pNewScript->pGossipHello = &GossipHello_npc_Caelestrasz;
     pNewScript->RegisterSelf();
 
     pNewScript = new Script;

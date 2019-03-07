@@ -40,6 +40,8 @@ class Database;
 
 #define MAX_QUERY_LEN   32*1024
 
+typedef ACE_Based::LockedQueue<SqlOperation*, ACE_Thread_Mutex> SqlQueue;
+
 //
 class MANGOS_DLL_SPEC SqlConnection
 {
@@ -173,6 +175,10 @@ class MANGOS_DLL_SPEC Database
             bool AsyncQuery(void (*method)(QueryResult*, ParamType1, ParamType2), ParamType1 param1, ParamType2 param2, const char *sql);
         template<typename ParamType1, typename ParamType2, typename ParamType3>
             bool AsyncQuery(void (*method)(QueryResult*, ParamType1, ParamType2, ParamType3), ParamType1 param1, ParamType2 param2, ParamType3 param3, const char *sql);
+        template<typename ParamType1>
+            bool AsyncQueryUnsafe(void (*method)(QueryResult*, ParamType1), ParamType1 param1, const char *sql);
+        template<typename ParamType1, typename ParamType2>
+            bool AsyncQueryUnsafe(void(*method)(QueryResult*, ParamType1, ParamType2), ParamType1 param1, ParamType2 param2, const char *sql);
         // PQuery / member
         template<class Class>
             bool AsyncPQuery(Class *object, void (Class::*method)(QueryResult*), const char *format,...) ATTR_PRINTF(4,5);
@@ -193,13 +199,23 @@ class MANGOS_DLL_SPEC Database
             bool AsyncPQuery(void (*method)(QueryResult*, ParamType1, ParamType2), ParamType1 param1, ParamType2 param2, const char *format,...) ATTR_PRINTF(5,6);
         template<typename ParamType1, typename ParamType2, typename ParamType3>
             bool AsyncPQuery(void (*method)(QueryResult*, ParamType1, ParamType2, ParamType3), ParamType1 param1, ParamType2 param2, ParamType3 param3, const char *format,...) ATTR_PRINTF(6,7);
-        template<class Class>
+        template<typename ParamType1>
+            bool AsyncPQueryUnsafe(void (*method)(QueryResult*, ParamType1), ParamType1 param1, const char *format, ...) ATTR_PRINTF(4, 5);
+        template<typename ParamType1, typename ParamType2>
+            bool AsyncPQueryUnsafe(void (*method)(QueryResult*, ParamType1, ParamType2), ParamType1 param1, ParamType2 param2, const char *format, ...) ATTR_PRINTF(5, 6);
         // QueryHolder
+        template<class Class>
             bool DelayQueryHolder(Class *object, void (Class::*method)(QueryResult*, SqlQueryHolder*), SqlQueryHolder *holder);
         template<class Class>
             bool DelayQueryHolderUnsafe(Class *object, void (Class::*method)(QueryResult*, SqlQueryHolder*), SqlQueryHolder *holder);
         template<class Class, typename ParamType1>
             bool DelayQueryHolder(Class *object, void (Class::*method)(QueryResult*, SqlQueryHolder*, ParamType1), SqlQueryHolder *holder, ParamType1 param1);
+
+        // QueryHolder / static
+        template<typename ParamType1>
+            bool DelayQueryHolder(void (*method)(QueryResult*, SqlQueryHolder*, ParamType1), SqlQueryHolder *holder, ParamType1 param1);
+        template<typename ParamType1>
+            bool DelayQueryHolderUnsafe(void (*method)(QueryResult*, SqlQueryHolder*, ParamType1), SqlQueryHolder *holder, ParamType1 param1);
 
         bool Execute(const char *sql);
         bool PExecute(const char *format,...) ATTR_PRINTF(2,3);
@@ -207,7 +223,9 @@ class MANGOS_DLL_SPEC Database
         // Writes SQL commands to a LOG file (see mangosd.conf "LogSQL")
         bool PExecuteLog(const char *format,...) ATTR_PRINTF(2,3);
 
-        bool BeginTransaction();
+        bool BeginTransaction(uint32 serialId = 0);
+        bool InTransaction();
+        uint32 GetTransactionSerialId();
         bool CommitTransaction();
         bool RollbackTransaction();
         //for sync transaction execution
@@ -245,13 +263,20 @@ class MANGOS_DLL_SPEC Database
         void AllowAsyncTransactions() { m_bAllowAsyncTransactions = true; }
         inline void AddToDelayQueue(SqlOperation* op) { m_delayQueue->add(op); }
         inline bool NextDelayedOperation(SqlOperation*& op) { return m_delayQueue->next(op); }
-        inline bool HasAsyncQuery() { return !(m_delayQueue->empty_unsafe()); }
+
+        inline void AddToSerialDelayQueue(int workerId, SqlOperation *op) { m_serialDelayQueue[workerId]->add(op); }
+        bool NextSerialDelayedOperation(int workerId, SqlOperation*& op);
+
+        bool HasAsyncQuery();
+
+        void AddToSerialDelayQueue(SqlOperation *op);
 
         // Frees data, cancels scheduled queries, closes connection
         void StopServer();
     protected:
-        Database() : m_pAsyncConn(NULL), m_pResultQueue(NULL), m_threadsBodies(NULL), m_delayThreads(NULL), m_numAsyncWorkers(0), m_delayQueue(new SqlQueue()),
-            m_logSQL(false), m_pingIntervallms(0), m_nQueryConnPoolSize(1), m_bAllowAsyncTransactions(false), m_iStmtIndex(-1)
+        Database() : m_pAsyncConn(NULL), m_pResultQueue(NULL), m_threadsBodies(NULL), m_delayThreads(NULL), m_numAsyncWorkers(0),
+            m_serialDelayQueue(NULL), m_delayQueue(new SqlQueue()), m_logSQL(false), m_pingIntervallms(0), m_nQueryConnPoolSize(1),
+            m_bAllowAsyncTransactions(false), m_iStmtIndex(-1)
         {
             m_nQueryCounter = -1;
         }
@@ -266,7 +291,7 @@ class MANGOS_DLL_SPEC Database
                 ~TransHelper();
 
                 //initializes new SqlTransaction object
-                SqlTransaction * init();
+                SqlTransaction * init(uint32 serialId);
                 //gets pointer on current transaction object. Returns NULL if transaction was not initiated
                 SqlTransaction * get() const { return m_pTrans; }
                 //detaches SqlTransaction object allocated by init() function
@@ -305,8 +330,8 @@ class MANGOS_DLL_SPEC Database
         typedef std::vector< SqlConnection * > SqlConnectionContainer;
         SqlConnectionContainer m_pQueryConnections;
 
-        typedef ACE_Based::LockedQueue<SqlOperation*, ACE_Thread_Mutex> SqlQueue;
         SqlQueue* m_delayQueue;
+        SqlQueue** m_serialDelayQueue; // simple mapping for worker ID -> serialized queue (only executed in set worker thread)
 
         SqlConnection * m_pAsyncConn;
 

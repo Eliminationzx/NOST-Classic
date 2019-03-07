@@ -128,7 +128,7 @@ struct boss_rajaxxAI : public ScriptedAI
         m_uiNextWave_Timer = 0;
         m_uiNextWaveIndex = 0;
 
-        if (m_pInstance)
+        if (m_pInstance && m_creature->isAlive())
         {
             for (uint8 waveIndex = 0; waveIndex < WAVE_MAX; ++waveIndex)
                 ResetWave(waveIndex);
@@ -138,7 +138,7 @@ struct boss_rajaxxAI : public ScriptedAI
 
     void ResetWave(uint8 waveIndex)
     {
-        if (!m_pInstance)
+        if (!m_pInstance || !m_creature->isAlive())
             return;
         if (waveIndex >= WAVE_MAX)
             return;
@@ -282,7 +282,7 @@ struct boss_rajaxxAI : public ScriptedAI
 
     void OnKillReputationReward()
     {
-        FactionEntry const *factionEntry = sFactionStore.LookupEntry(609); // Cenarion Circle
+        FactionEntry const *factionEntry = sObjectMgr.GetFactionEntry(609); // Cenarion Circle
         if (!factionEntry) {
             sLog.outError("Rajaxx justDied, unable to find Cenarion Circle faction");
             return;
@@ -400,101 +400,19 @@ struct boss_rajaxxAQWarAI : public boss_rajaxxAI
 {
     boss_rajaxxAQWarAI(Creature* pCreature) : boss_rajaxxAI(pCreature)
     {
-        m_pInstance = nullptr;
-        Reset();
-
-        m_creature->SetNoXP();
-        // Rajaxx is drunk with the might of C'Thun
-        m_creature->SetMaxHealth(m_creature->GetMaxHealth() * 15);
-        m_creature->SetHealthPercent(100);
-        m_creature->SetObjectScale(7);
-        m_creature->UpdateModelData();
+        pCreature->SetFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_NOT_ATTACKABLE_1 | UNIT_FLAG_PASSIVE);
 
         DoScriptText(SAY_AQ_WAR_START, m_creature);
-
-        chargeTargetNow = false;
-        uint32  spellReflectTimer = 60000;
-        uint32  AOEFearTimer = 45000;
     }
 
-    bool chargeTargetNow;
-    uint32 spellReflectTimer;
-    uint32 AOEFearTimer;
-
-    void UpdateAI(uint32 uiDiff)
+    void UpdateAI(const uint32 uiDiff) override
     {
-        if (!m_creature->SelectHostileTarget() || !m_creature->getVictim())
-            return;
+        return;
+    }
 
-        // ResetAggro
-        if (m_uiResetAggro_Timer < uiDiff)
-        {
-            m_uiResetAggro_Timer = urand(9000, 12000);
-            chargeTargetNow = true;
-        }
-        else
-            m_uiResetAggro_Timer -= uiDiff;
-
-        if (AOEFearTimer < uiDiff)
-        {
-            if (DoCastSpellIfCan(m_creature->getVictim(), SPELL_FEAR) == CAST_OK)
-                AOEFearTimer = urand(28000, 30000);
-        }
-        else
-            AOEFearTimer -= uiDiff;
-
-        if (spellReflectTimer < uiDiff)
-        {
-            if (DoCastSpellIfCan(m_creature, SPELL_REFLECT) == CAST_OK)
-            {
-                spellReflectTimer = urand(28000, 30000);
-
-                if (m_creature->GetHealthPercent() < 33.0f)
-                    spellReflectTimer /= 2;
-            }
-
-            if (m_creature->GetHealthPercent() < 10)
-                DoCastSpellIfCan(m_creature, SPELL_ENRAGE, CAST_AURA_NOT_PRESENT);
-        }
-        else
-            spellReflectTimer -= uiDiff;
-
-        /* Trash */
-        if (m_uiTrash_Timer < uiDiff)
-        {
-            if (DoCastSpellIfCan(m_creature->getVictim(), SPELL_TRASH) == CAST_OK)
-                m_uiTrash_Timer = urand(10000, 15000);
-        }
-        else
-            m_uiTrash_Timer -= uiDiff;
-
-        // Disarm
-        if (m_uiDisarm_Timer < uiDiff)
-        {
-            if (DoCastSpellIfCan(m_creature->getVictim(), SPELL_DISARM, CAST_AURA_NOT_PRESENT) == CAST_OK)
-                m_uiDisarm_Timer = 15000;
-        }
-        else
-            m_uiDisarm_Timer -= uiDiff;
-
-        DoMeleeAttackIfReady();
-
-        if (chargeTargetNow)
-        {
-            if (Unit* newVictim = m_creature->SelectAttackingTarget(ATTACKING_TARGET_RANDOM, 1))
-            {
-                Unit* oldVictim = m_creature->getVictim();
-
-                if (DoCastSpellIfCan(m_creature->getVictim(), SPELL_CHARGE) == CAST_OK)
-                {
-                    m_creature->getThreatManager().modifyThreatPercent(oldVictim, -100);
-                    m_creature->getThreatManager().modifyThreatPercent(newVictim, 100);
-
-                    chargeTargetNow = false;
-                }
-            }
-        }
-
+    bool FillLoot(Loot* loot, Player* looter) const
+    {
+        return true; // Do nothing. No loot drop out here.
     }
 };
 
@@ -564,7 +482,7 @@ struct npc_andorovAI : public ScriptedAI
         {
             DoScriptText(SAY_ANDOROV_INTRO, m_creature);
 
-            m_creature->GetMotionMaster()->MoveWaypoint(false);
+            m_creature->GetMotionMaster()->MoveWaypoint(0, 0, 0, 0, 0, false);
 
             m_pInstance->SetData(TYPE_GENERAL_ANDOROV, IN_PROGRESS);
         }
@@ -660,7 +578,7 @@ bool GossipSelect_npc_andorov(Player* pPlayer, Creature* pCreature, uint32 uiSen
 
 CreatureAI* GetAI_boss_rajaxx(Creature* pCreature)
 {
-    if (pCreature->GetZoneId() == ZONE_SILITHUS)
+    if (pCreature->GetMapId() == 1)
         return new boss_rajaxxAQWarAI(pCreature);
 
     return new boss_rajaxxAI(pCreature);

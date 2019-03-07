@@ -25,6 +25,7 @@
 #include "WorldPacket.h"
 #include "Database/DatabaseEnv.h"
 #include "ItemEnchantmentMgr.h"
+#include "GuildMgr.h"
 
 void AddItemsSetItem(Player* player, Item* item)
 {
@@ -533,8 +534,9 @@ void Item::DeleteAllFromDB(uint32 guidLow)
     CharacterDatabase.PExecute("DELETE FROM auction WHERE itemguid = '%u'", guidLow);
     CharacterDatabase.PExecute("DELETE FROM mail_items WHERE item_guid = '%u'", guidLow);
     // Petitions
-    CharacterDatabase.PExecute("DELETE FROM petition WHERE petitionguid = '%u'", guidLow);
-    CharacterDatabase.PExecute("DELETE FROM petition_sign WHERE petitionguid = '%u'", guidLow);
+    if (Petition* petition = sGuildMgr.GetPetitionByCharterGuid(ObjectGuid(guidLow)))
+        sGuildMgr.DeletePetition(petition);
+
     CharacterDatabase.PExecute("DELETE FROM character_gifts WHERE item_guid = '%u'", guidLow);
 }
 
@@ -1157,4 +1159,47 @@ bool Item::ChangeEntry(ItemPrototype const* pNewProto)
     if (Player* pOwner = GetOwner())
         AddToUpdateQueueOf(pOwner);
     return true;
+}
+
+void Item::GetLocalizedNameWithSuffix(std::string& name, const ItemPrototype* proto, const ItemRandomPropertiesEntry* randomProp, int dbLocale, LocaleConstant dbcLocale)
+{
+    // local name
+    if (dbLocale >= 0)
+    {
+        ItemLocale const *il = sObjectMgr.GetItemLocale(proto->ItemId);
+        if (il)
+        {
+            if (il->Name.size() > size_t(dbLocale) && !il->Name[dbLocale].empty())
+                name = il->Name[dbLocale];
+        }
+    }
+
+    if (randomProp)
+    {
+        std::string nameSuffix(randomProp->internalName);
+        if (dbcLocale < MAX_DBC_LOCALE)
+        {
+            std::string localeSuffix = randomProp->nameSuffix[dbcLocale];
+            if (localeSuffix.length() > 0)
+                nameSuffix = localeSuffix;
+        }
+
+        if (!nameSuffix.empty())
+        {
+            // Support backwards languages
+            switch (dbcLocale)
+            {
+                case LOCALE_zhCN:
+                case LOCALE_zhTW:
+                    name = nameSuffix + name;
+                    break;
+                case LOCALE_koKR:
+                    name = nameSuffix + " " + name;
+                    break;
+                default:
+                    name += " " + nameSuffix;
+                    break;
+            }
+        }
+    }
 }

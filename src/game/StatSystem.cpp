@@ -26,6 +26,7 @@
 #include "SharedDefines.h"
 #include "SpellAuras.h"
 #include "ObjectMgr.h"
+#include "World.h"
 
 /*#######################################
 ########                         ########
@@ -171,20 +172,16 @@ void Player::UpdateArmor()
     SetArmor(int32(value));
 }
 
-float Player::GetHealthBonusFromStamina()
+float Player::GetHealthBonusFromStamina(float stamina)
 {
-    float stamina = GetStat(STAT_STAMINA);
-
     float baseStam = stamina < 20 ? stamina : 20;
     float moreStam = stamina - baseStam;
 
     return baseStam + (moreStam * 10.0f);
 }
 
-float Player::GetManaBonusFromIntellect()
+float Player::GetManaBonusFromIntellect(float intellect)
 {
-    float intellect = GetStat(STAT_INTELLECT);
-
     float baseInt = intellect < 20 ? intellect : 20;
     float moreInt = intellect - baseInt;
 
@@ -197,7 +194,7 @@ void Player::UpdateMaxHealth()
 
     float value = GetModifierValue(unitMod, BASE_VALUE) + GetCreateHealth();
     value *= GetModifierValue(unitMod, BASE_PCT);
-    value += GetModifierValue(unitMod, TOTAL_VALUE) + GetHealthBonusFromStamina();
+    value += GetModifierValue(unitMod, TOTAL_VALUE) + GetHealthBonusFromStamina(GetStat(STAT_STAMINA));
     value *= GetModifierValue(unitMod, TOTAL_PCT);
 
     SetMaxHealth(std::max(1, int(value)));
@@ -210,7 +207,7 @@ void Player::UpdateMaxPower(Powers power)
     uint32 create_power = GetCreatePowers(power);
 
     // ignore classes without mana
-    float bonusPower = (power == POWER_MANA && create_power > 0) ? GetManaBonusFromIntellect() : 0;
+    float bonusPower = (power == POWER_MANA && create_power > 0) ? GetManaBonusFromIntellect(GetStat(STAT_INTELLECT)) : 0;
 
     float value = GetModifierValue(unitMod, BASE_VALUE) + create_power;
     value *= GetModifierValue(unitMod, BASE_PCT);
@@ -389,6 +386,7 @@ void Player::CalculateMinMaxDamage(WeaponAttackType attType, bool normalized, fl
     float base_pct    = GetModifierValue(unitMod, BASE_PCT);
     float total_value = GetModifierValue(unitMod, TOTAL_VALUE);
     float total_pct   = GetModifierValue(unitMod, TOTAL_PCT);
+    float total_phys  = GetTotalAuraModValue(UNIT_MOD_DAMAGE_PHYSICAL);
 
     float weapon_mindamage = GetWeaponDamageRange(attType, MINDAMAGE, index);
     float weapon_maxdamage = GetWeaponDamageRange(attType, MAXDAMAGE, index);
@@ -413,14 +411,16 @@ void Player::CalculateMinMaxDamage(WeaponAttackType attType, bool normalized, fl
 
             weapon_mindamage = lvl * 0.85f * att_speed;
             weapon_maxdamage = lvl * 1.25f * att_speed;
+            total_value = 0.0f;                             // remove benefit from weapon enchants
         }
     }
     else if (!CanUseEquippedWeapon(attType))                // check if player not in form but still can't use weapon (broken/etc)
     {
         weapon_mindamage = BASE_MINDAMAGE;
         weapon_maxdamage = BASE_MAXDAMAGE;
+        total_value = 0.0f;
     }
-    else if (attType == RANGED_ATTACK)                      // add ammo DPS to ranged damage
+    else if (attType == RANGED_ATTACK && index == 0)        // add ammo DPS to ranged damage
     {
         weapon_mindamage += GetAmmoDPS() * att_speed;
         weapon_maxdamage += GetAmmoDPS() * att_speed;
@@ -430,10 +430,11 @@ void Player::CalculateMinMaxDamage(WeaponAttackType attType, bool normalized, fl
     {
         base_value = 0.0f;
         total_value = 0.0f;
+        total_phys = 0.0f;
     }
 
-    min_damage = ((base_value + weapon_mindamage) * base_pct + total_value) * total_pct;
-    max_damage = ((base_value + weapon_maxdamage) * base_pct + total_value) * total_pct;
+    min_damage = ((base_value + weapon_mindamage) * base_pct + total_value + total_phys) * total_pct;
+    max_damage = ((base_value + weapon_maxdamage) * base_pct + total_value + total_phys) * total_pct;
 }
 
 void Player::UpdateDamagePhysical(WeaponAttackType attType)
@@ -692,6 +693,9 @@ bool Creature::UpdateAllStats()
     for (int i = SPELL_SCHOOL_NORMAL; i < MAX_SPELL_SCHOOL; ++i)
         UpdateResistances(i);
 
+    if (GetMaxPower(POWER_MANA))
+        UpdateManaRegen();
+
     return true;
 }
 
@@ -724,6 +728,18 @@ void Creature::UpdateMaxPower(Powers power)
 
     float value  = GetTotalAuraModValue(unitMod);
     SetMaxPower(power, uint32(value));
+}
+
+void Creature::UpdateManaRegen()
+{
+    float ManaIncreaseRate = sWorld.getConfig(CONFIG_FLOAT_RATE_POWER_MANA);
+    float Spirit = GetStat(STAT_SPIRIT);
+    // Apply PCT bonus from SPELL_AURA_MOD_POWER_REGEN_PERCENT aura on spirit base regen
+    float power_regen = GetTotalAuraMultiplierByMiscValue(SPELL_AURA_MOD_POWER_REGEN_PERCENT, POWER_MANA);
+    // Mana regen from SPELL_AURA_MOD_POWER_REGEN aura
+    float power_regen_mp5 = GetTotalAuraModifierByMiscValue(SPELL_AURA_MOD_POWER_REGEN, POWER_MANA) / 5.0f;
+    
+    m_manaRegen = uint32(((Spirit / 5.0f + 17.0f) * power_regen + power_regen_mp5) * ManaIncreaseRate);
 }
 
 void Creature::UpdateAttackPowerAndDamage(bool ranged)
@@ -767,6 +783,7 @@ void Creature::UpdateDamagePhysical(WeaponAttackType attType)
     float base_pct    = GetModifierValue(unitMod, BASE_PCT);
     float total_value = GetModifierValue(unitMod, TOTAL_VALUE);
     float total_pct   = GetModifierValue(unitMod, TOTAL_PCT);
+    float total_phys  = GetTotalAuraModValue(UNIT_MOD_DAMAGE_PHYSICAL);
     float dmg_multiplier = GetCreatureInfo()->dmg_multiplier;
 
     float weapon_mindamage = GetWeaponDamageRange(attType, MINDAMAGE);
@@ -791,8 +808,8 @@ void Creature::UpdateDamagePhysical(WeaponAttackType attType)
         weapon_maxdamage = weapon_maxdamage * (0.7f + 0.3f * attackPowerNow / databaseAttackPower);
     }
 
-    float mindamage = ((base_value + weapon_mindamage) * dmg_multiplier * base_pct + total_value) * total_pct;
-    float maxdamage = ((base_value + weapon_maxdamage) * dmg_multiplier * base_pct + total_value) * total_pct;
+    float mindamage = ((base_value + weapon_mindamage) * dmg_multiplier * base_pct + total_value + total_phys) * total_pct;
+    float maxdamage = ((base_value + weapon_maxdamage) * dmg_multiplier * base_pct + total_value + total_phys) * total_pct;
 
     SetStatFloatValue(attType == BASE_ATTACK ? UNIT_FIELD_MINDAMAGE : UNIT_FIELD_MINOFFHANDDAMAGE, mindamage);
     SetStatFloatValue(attType == BASE_ATTACK ? UNIT_FIELD_MAXDAMAGE : UNIT_FIELD_MAXOFFHANDDAMAGE, maxdamage);
@@ -833,6 +850,9 @@ bool Pet::UpdateStats(Stats stat)
             break;
     }
 
+    if (GetMaxPower(POWER_MANA))
+        UpdateManaRegen();
+
     return true;
 }
 
@@ -846,6 +866,9 @@ bool Pet::UpdateAllStats()
 
     for (int i = SPELL_SCHOOL_NORMAL; i < MAX_SPELL_SCHOOL; ++i)
         UpdateResistances(i);
+
+    if (GetMaxPower(POWER_MANA))
+        UpdateManaRegen();
 
     return true;
 }
@@ -945,6 +968,7 @@ void Pet::UpdateDamagePhysical(WeaponAttackType attType)
     float base_pct    = GetModifierValue(unitMod, BASE_PCT);
     float total_value = GetModifierValue(unitMod, TOTAL_VALUE);
     float total_pct   = GetModifierValue(unitMod, TOTAL_PCT);
+    float total_phys  = GetTotalAuraModValue(UNIT_MOD_DAMAGE_PHYSICAL);
     float dmg_multiplier = getPetType() == HUNTER_PET ? 1.0f : GetCreatureInfo()->dmg_multiplier;
 
     float weapon_mindamage = GetWeaponDamageRange(attType, MINDAMAGE);
@@ -965,8 +989,8 @@ void Pet::UpdateDamagePhysical(WeaponAttackType attType)
         weapon_maxdamage = weapon_maxdamage * (0.7f + 0.3f * attackPowerNow / createAttackPower);
     }
 
-    float mindamage = ((base_value + weapon_mindamage) * dmg_multiplier * base_pct + total_value) * total_pct;
-    float maxdamage = ((base_value + weapon_maxdamage) * dmg_multiplier * base_pct + total_value) * total_pct;
+    float mindamage = ((base_value + weapon_mindamage) * dmg_multiplier * base_pct + total_value + total_phys) * total_pct;
+    float maxdamage = ((base_value + weapon_maxdamage) * dmg_multiplier * base_pct + total_value + total_phys) * total_pct;
 
     //  Pet's base damage changes depending on happiness
     if (getPetType() == HUNTER_PET)
