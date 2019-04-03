@@ -58,8 +58,13 @@ bool PetAI::_needToStop() const
     if (m_creature->IsPet() && !((Pet*)m_creature)->IsEnabled())
         return true;
 
-    bool playerPet = m_creature->GetCharmerOrOwnerOrSelf()->IsPlayer();
-    return !m_creature->getVictim()->isTargetableForAttack(false, playerPet);
+    Unit* pOwner = m_creature->GetCharmerOrOwnerOrSelf();
+
+    // Prevent creature pets from chasing forever
+    if (pOwner->IsCreature() && !pOwner->isInCombat() && m_creature->IsOutOfThreatArea(m_creature->getVictim()))
+        return true;
+
+    return !m_creature->getVictim()->isTargetableForAttack(false, pOwner->IsPlayer());
 }
 
 void PetAI::_stopAttack()
@@ -87,7 +92,7 @@ void PetAI::UpdateAI(const uint32 diff)
         return;
 
     // part of it must run during eyes of the Beast to update melee hits
-    bool playerControlled = m_creature->HasFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_PLAYER_CONTROLLED);
+    bool playerControlled = m_creature->HasFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_POSSESSED);
 
     Unit* owner = m_creature->GetCharmerOrOwner();
 
@@ -519,7 +524,7 @@ void PetAI::HandleReturnMovement()
 
     // Prevent activating movement when under control of spells
     // such as "Eyes of the Beast"
-    if (m_creature->isCharmed() || m_creature->HasFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_PLAYER_CONTROLLED))
+    if (m_creature->HasFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_POSSESSED))
         return;
 
     if (m_creature->GetCharmInfo()->HasCommandState(COMMAND_STAY))
@@ -577,16 +582,10 @@ void PetAI::DoAttack(Unit* target, bool chase)
         }
 
         // Flag owner for PvP if owner is player and target is flagged
-        Unit* owner = m_creature->GetCharmerOrOwner();
-        if (owner && owner->IsPlayer() && !owner->IsPvP())
+        Unit* pOwner = m_creature->GetCharmerOrOwner();
+        if (pOwner && pOwner->IsPlayer() && !pOwner->IsPvP())
         {
-            Player* pOwner = owner->ToPlayer();
-            if ((target->IsPlayer() && target->IsPvP() && !pOwner->IsInDuelWith((Player*)target)) || // PvP flagged players
-                (target->IsCreature() && target->IsPvP()))                                           // PvP flagged creatures
-            {
-                pOwner->UpdatePvP(true);
-                pOwner->RemoveAurasWithInterruptFlags(AURA_INTERRUPT_FLAG_ENTER_PVP_COMBAT);
-            }
+            pOwner->TogglePlayerPvPFlagOnAttackVictim(target);
         }
     }
 }
@@ -675,7 +674,7 @@ bool PetAI::CanAttack(Unit* target)
         if (owner)
         {
             if (Player* playerOwner = owner->ToPlayer())
-                ownerTarget = playerOwner->getSelectedUnit();
+                ownerTarget = playerOwner->GetSelectedUnit();
             else
                 ownerTarget = owner->getVictim();
         }

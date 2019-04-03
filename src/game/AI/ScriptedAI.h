@@ -74,9 +74,6 @@ struct MANGOS_DLL_DECL ScriptedAI : CreatureAI
     // Called at waypoint reached or PointMovement end
     void MovementInform(uint32, uint32) override {}
 
-    // Called when populating the loot table for this creature
-    bool FillLoot(Loot* loot, Player* looter) const override;
-
     //*************
     // Variables
     //*************
@@ -146,6 +143,9 @@ struct MANGOS_DLL_DECL ScriptedAI : CreatureAI
     void EnterEvadeIfOutOfHomeArea();
 
     void DoGoHome();
+    void EnterVanish();
+    void LeaveVanish();
+    void Ambush(Unit* pNewVictim, uint32 embushSpellId = 0);
 
     float DoGetThreat(Unit* pUnit);
     void DoModifyThreatPercent(Unit* pUnit, int32 pct);

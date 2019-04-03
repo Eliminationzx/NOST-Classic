@@ -301,6 +301,15 @@ void WorldSession::HandleWhoOpcode(WorldPacket & recv_data)
     sWorld.AddAsyncTask(task);
 }
 
+void WorldSession::HandleLFGOpcode(WorldPacket & recv_data)
+{
+    DEBUG_LOG("WORLD: Recvd MSG_LOOKING_FOR_GROUP Message");
+    
+    WorldPacket data(MSG_LOOKING_FOR_GROUP, 4);
+    data << uint32(0);
+    SendPacket(&data);
+}
+
 void WorldSession::HandleLogoutRequestOpcode(WorldPacket & /*recv_data*/)
 {
     DEBUG_LOG("WORLD: Recvd CMSG_LOGOUT_REQUEST Message, security - %u", GetSecurity());
@@ -394,21 +403,15 @@ void WorldSession::HandleTogglePvP(WorldPacket & recv_data)
     {
         bool newPvPStatus;
         recv_data >> newPvPStatus;
-        GetPlayer()->ApplyModFlag(PLAYER_FLAGS, PLAYER_FLAGS_IN_PVP, newPvPStatus);
+        GetPlayer()->ApplyModFlag(PLAYER_FLAGS, PLAYER_FLAGS_PVP_DESIRED, newPvPStatus);
     }
     else
-        GetPlayer()->ToggleFlag(PLAYER_FLAGS, PLAYER_FLAGS_IN_PVP);
+    {
+        GetPlayer()->ToggleFlag(PLAYER_FLAGS, PLAYER_FLAGS_PVP_DESIRED);
+    }
 
-    if (GetPlayer()->HasFlag(PLAYER_FLAGS, PLAYER_FLAGS_IN_PVP))
-    {
-        if (!GetPlayer()->IsPvP() || GetPlayer()->pvpInfo.endTimer != 0)
-            GetPlayer()->UpdatePvP(true, true);
-    }
-    else
-    {
-        if (!GetPlayer()->pvpInfo.inHostileArea && GetPlayer()->IsPvP())
-            GetPlayer()->pvpInfo.endTimer = time(NULL);     // start toggle-off
-    }
+    if (GetPlayer()->HasFlag(PLAYER_FLAGS, PLAYER_FLAGS_PVP_DESIRED))
+        GetPlayer()->UpdatePvP(true);
 }
 
 void WorldSession::HandleZoneUpdateOpcode(WorldPacket & recv_data)
@@ -714,11 +717,11 @@ void WorldSession::HandleResurrectResponseOpcode(WorldPacket & recv_data)
 
     if (status == 0)
     {
-        GetPlayer()->clearResurrectRequestData();           // reject
+        GetPlayer()->ClearResurrectRequestData();           // reject
         return;
     }
 
-    if (!GetPlayer()->isRessurectRequestedBy(guid))
+    if (!GetPlayer()->IsRessurectRequestedBy(guid))
         return;
 
     GetPlayer()->ResurectUsingRequestData();                // will call spawncorpsebones
@@ -739,7 +742,7 @@ void WorldSession::HandleAreaTriggerOpcode(WorldPacket & recv_data)
         return;
     }
 
-    AreaTriggerEntry const* atEntry = sAreaTriggerStore.LookupEntry(Trigger_ID);
+    AreaTriggerEntry const* atEntry = sObjectMgr.GetAreaTrigger(Trigger_ID);
     if (!atEntry)
     {
         DEBUG_LOG("Player '%s' (GUID: %u) send unknown (by DBC) Area Trigger ID: %u", GetPlayer()->GetName(), GetPlayer()->GetGUIDLow(), Trigger_ID);
@@ -811,7 +814,7 @@ void WorldSession::HandleAreaTriggerOpcode(WorldPacket & recv_data)
     }
 
     // NULL if all values default (non teleport trigger)
-    AreaTrigger const* at = sObjectMgr.GetAreaTrigger(Trigger_ID);
+    AreaTriggerTeleport const* at = sObjectMgr.GetAreaTriggerTeleport(Trigger_ID);
     if (!at)
         return;
 
@@ -831,7 +834,7 @@ void WorldSession::HandleAreaTriggerOpcode(WorldPacket & recv_data)
         GetPlayer()->GetHonorMgr().GetRank().visualRank
         : GetPlayer()->GetHonorMgr().GetHighestRank().visualRank;
 
-    if (!pl->isGameMaster())
+    if (!pl->IsGameMaster())
     {
         bool missingRank = false;
         if (at->required_pvp_rank)
@@ -853,6 +856,19 @@ void WorldSession::HandleAreaTriggerOpcode(WorldPacket & recv_data)
             int32 corpseMapId = 0;
             if (Corpse *corpse = pl->GetCorpse())
                 corpseMapId = corpse->GetMapId();
+
+            // Special case prior Patch 1.3 to revive your corpse if dead in Molten Core
+            if (sWorld.GetWowPatch() <= WOW_PATCH_102)
+            {
+                if (corpseMapId == 409 && Trigger_ID == 1466)
+                {
+                    pl->ResurrectPlayer(0.5f);
+                    pl->SpawnCorpseBones();
+                    GetPlayer()->TeleportTo(230, 458.32f, 26.52f, -70.67f, 4.95f); // Blackrock Depths
+                    // GetPlayer()->TeleportTo(409, 1082.04f, -474.596f, -107.762f, 5.02623f); // Molten Core
+                    return;
+                }
+            }
 
             // check back way from corpse to entrance
             uint32 instance_map = corpseMapId;
@@ -876,7 +892,7 @@ void WorldSession::HandleAreaTriggerOpcode(WorldPacket & recv_data)
 
             // need find areatrigger to inner dungeon for landing point
             if (at->target_mapId != corpseMapId)
-                if (AreaTrigger const* corpseAt = sObjectMgr.GetMapEntranceTrigger(corpseMapId))
+                if (AreaTriggerTeleport const* corpseAt = sObjectMgr.GetMapEntranceTrigger(corpseMapId))
                     at = corpseAt;
             // now we can resurrect player, and then check teleport requirements
             pl->ResurrectPlayer(0.5f);
@@ -1086,9 +1102,8 @@ void WorldSession::HandleInspectHonorStatsOpcode(WorldPacket& recv_data) {
         data << pl->GetUInt32Value(PLAYER_FIELD_LAST_WEEK_RANK);
 
         // Rank progress bar
-#if SUPPORTED_CLIENT_BUILD >= CLIENT_BUILD_1_12_1
         data << (uint8)pl->GetByteValue(PLAYER_FIELD_BYTES2, 0);
-#endif
+
         SendPacket(&data);
     } else
         DEBUG_LOG("%s not found!", guid.GetString().c_str());

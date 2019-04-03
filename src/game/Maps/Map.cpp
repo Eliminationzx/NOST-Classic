@@ -55,8 +55,6 @@
 #include "world/world_event_wareffort.h"
 #include "LFGMgr.h"
 
-#define MAX_GRID_LOAD_TIME      50
-
 Map::~Map()
 {
     UnloadAll(true);
@@ -478,7 +476,7 @@ void Map::Add(Transport* obj)
     return;
 }
 
-void Map::MessageBroadcast(Player *player, WorldPacket *msg, bool to_self)
+void Map::MessageBroadcast(Player const* player, WorldPacket *msg, bool to_self)
 {
     CellPair p = MaNGOS::ComputeCellPair(player->GetPositionX(), player->GetPositionY());
 
@@ -499,7 +497,7 @@ void Map::MessageBroadcast(Player *player, WorldPacket *msg, bool to_self)
     cell.Visit(p, message, *this, *player, GetVisibilityDistance());
 }
 
-void Map::MessageBroadcast(WorldObject *obj, WorldPacket *msg)
+void Map::MessageBroadcast(WorldObject const* obj, WorldPacket *msg)
 {
     CellPair p = MaNGOS::ComputeCellPair(obj->GetPositionX(), obj->GetPositionY());
 
@@ -522,7 +520,7 @@ void Map::MessageBroadcast(WorldObject *obj, WorldPacket *msg)
     cell.Visit(p, message, *this, *obj, GetVisibilityDistance());
 }
 
-void Map::MessageDistBroadcast(Player *player, WorldPacket *msg, float dist, bool to_self, bool own_team_only)
+void Map::MessageDistBroadcast(Player const* player, WorldPacket *msg, float dist, bool to_self, bool own_team_only)
 {
     CellPair p = MaNGOS::ComputeCellPair(player->GetPositionX(), player->GetPositionY());
 
@@ -543,7 +541,7 @@ void Map::MessageDistBroadcast(Player *player, WorldPacket *msg, float dist, boo
     cell.Visit(p, message, *this, *player, dist);
 }
 
-void Map::MessageDistBroadcast(WorldObject *obj, WorldPacket *msg, float dist)
+void Map::MessageDistBroadcast(WorldObject const* obj, WorldPacket *msg, float dist)
 {
     CellPair p = MaNGOS::ComputeCellPair(obj->GetPositionX(), obj->GetPositionY());
 
@@ -1018,25 +1016,31 @@ ScriptedEvent* Map::StartScriptedEvent(uint32 id, WorldObject* source, WorldObje
     if (m_mScriptedEvents.find(id) != m_mScriptedEvents.end())
         return nullptr;
     
-    auto itr = m_mScriptedEvents.emplace(std::piecewise_construct, std::forward_as_tuple(id), std::forward_as_tuple(id, source, target, this, time_t(sWorld.GetGameTime() + timelimit), failureCondition, failureScript, successCondition, successScript));
+    auto itr = m_mScriptedEvents.emplace(std::piecewise_construct, std::forward_as_tuple(id), std::forward_as_tuple(id, source ? source->GetObjectGuid() : ObjectGuid(), target ? target->GetObjectGuid() : ObjectGuid(), *this, time_t(sWorld.GetGameTime() + timelimit), failureCondition, failureScript, successCondition, successScript));
 
     return &itr.first->second;
 }
 
 bool ScriptedEvent::UpdateEvent()
 {
+    if (m_bEnded)
+        return true;
+
     if (m_tExpireTime < sWorld.GetGameTime())
     {
         EndEvent(false);
         return true;
     }
 
-    if (m_uiFailureCondition && sObjectMgr.IsConditionSatisfied(m_uiFailureCondition, m_pTarget, m_pMap, m_pSource, CONDITION_FROM_MAP_EVENT))
+    WorldObject* pSource = GetSourceObject();
+    WorldObject* pTarget = GetTargetObject();
+
+    if (m_uiFailureCondition && sObjectMgr.IsConditionSatisfied(m_uiFailureCondition, pTarget, &m_Map, pSource, CONDITION_FROM_MAP_EVENT))
     {
         EndEvent(false);
         return true;
     }
-    else if (m_uiSuccessCondition && sObjectMgr.IsConditionSatisfied(m_uiSuccessCondition, m_pTarget, m_pMap, m_pSource, CONDITION_FROM_MAP_EVENT))
+    else if (m_uiSuccessCondition && sObjectMgr.IsConditionSatisfied(m_uiSuccessCondition, pTarget, &m_Map, pSource, CONDITION_FROM_MAP_EVENT))
     {
         EndEvent(true);
         return true;
@@ -1044,12 +1048,17 @@ bool ScriptedEvent::UpdateEvent()
 
     for (const auto& target : m_vTargets)
     {
-        if (target.uiFailureCondition && sObjectMgr.IsConditionSatisfied(target.uiFailureCondition, m_pTarget, m_pMap, target.pObject, CONDITION_FROM_MAP_EVENT))
+        WorldObject* pObject = m_Map.GetWorldObject(target.target);
+
+        if (!pObject || !pObject->IsInWorld())
+            continue;
+
+        if (target.uiFailureCondition && sObjectMgr.IsConditionSatisfied(target.uiFailureCondition, pTarget, &m_Map, pObject, CONDITION_FROM_MAP_EVENT))
         {
             EndEvent(false);
             return true;
         }
-        else if (target.uiSuccessCondition && sObjectMgr.IsConditionSatisfied(target.uiSuccessCondition, m_pTarget, m_pMap, target.pObject, CONDITION_FROM_MAP_EVENT))
+        else if (target.uiSuccessCondition && sObjectMgr.IsConditionSatisfied(target.uiSuccessCondition, pTarget, &m_Map, pObject, CONDITION_FROM_MAP_EVENT))
         {
             EndEvent(true);
             return true;
@@ -1061,30 +1070,45 @@ bool ScriptedEvent::UpdateEvent()
 
 void ScriptedEvent::EndEvent(bool bSuccess)
 {
+    m_bEnded = true;
+
     if (bSuccess && m_uiSuccessScript)
-        m_pMap->ScriptsStart(sEventScripts, m_uiSuccessScript, m_pSource, m_pTarget);
+        m_Map.ScriptsStart(sEventScripts, m_uiSuccessScript, GetSourceObject(), GetTargetObject());
     else if (!bSuccess && m_uiFailureScript)
-        m_pMap->ScriptsStart(sEventScripts, m_uiFailureScript, m_pSource, m_pTarget);
+        m_Map.ScriptsStart(sEventScripts, m_uiFailureScript, GetSourceObject(), GetTargetObject());
 
     for (const auto& target : m_vTargets)
     {
-        if (!target.pObject)
+        WorldObject* pObject = m_Map.GetWorldObject(target.target);
+
+        if (!pObject || !pObject->IsInWorld())
             continue;
 
         if (bSuccess && target.uiSuccessScript)
-            m_pMap->ScriptsStart(sEventScripts, target.uiSuccessScript, target.pObject, m_pTarget);
+            m_Map.ScriptsStart(sEventScripts, target.uiSuccessScript, pObject, GetTargetObject());
         else if (!bSuccess && target.uiFailureScript)
-            m_pMap->ScriptsStart(sEventScripts, target.uiFailureScript, target.pObject, m_pTarget);
+            m_Map.ScriptsStart(sEventScripts, target.uiFailureScript, pObject, GetTargetObject());
     }
+}
+
+WorldObject* ScriptedEvent::GetSourceObject() const
+{
+    return m_Map.GetWorldObjectOrPlayer(m_Source);
+
+}
+WorldObject* ScriptedEvent::GetTargetObject() const
+{
+    return m_Map.GetWorldObjectOrPlayer(m_Target);
+
 }
 
 void ScriptedEvent::SendEventToMainTargets(uint32 uiData)
 {
-    if (Creature* pCreatureSource = ToCreature(m_pSource))
+    if (Creature* pCreatureSource = ToCreature(GetSourceObject()))
         if (pCreatureSource->AI())
             pCreatureSource->AI()->MapScriptEventHappened(this, uiData);
 
-    if (Creature* pCreatureTarget = ToCreature(m_pTarget))
+    if (Creature* pCreatureTarget = ToCreature(GetTargetObject()))
         if (pCreatureTarget->AI())
             pCreatureTarget->AI()->MapScriptEventHappened(this, uiData);
 }
@@ -1093,7 +1117,7 @@ void ScriptedEvent::SendEventToAdditionalTargets(uint32 uiData)
 {
     for (const auto& target : m_vTargets)
     {
-        if (Creature* pCreature = ToCreature(target.pObject))
+        if (Creature* pCreature = ToCreature(m_Map.GetWorldObject(target.target)))
             if (pCreature->AI())
                 pCreature->AI()->MapScriptEventHappened(this, uiData);
     }
@@ -1467,8 +1491,11 @@ void Map::UnloadAll(bool pForce)
         Remove<Transport>(transport, true);
     }
 
-    // Bones are already added to the grid, and hence deleted when unloading
-    _bones.clear();
+    // Bones list should be empty at this point.
+    if (!_bones.empty()) {
+        sLog.outError("Non empty bones list, probably leaking. Please report.");
+        _bones.clear();
+    }
 }
 
 bool Map::CheckGridIntegrity(Creature* c, bool moved) const
@@ -1681,7 +1708,7 @@ uint32 Map::GetPlayersCountExceptGMs() const
 {
     uint32 count = 0;
     for (MapRefManager::const_iterator itr = m_mapRefManager.begin(); itr != m_mapRefManager.end(); ++itr)
-        if (!itr->getSource()->isGameMaster())
+        if (!itr->getSource()->IsGameMaster())
             ++count;
     return count;
 }
@@ -1941,7 +1968,7 @@ bool DungeonMap::CanEnter(Player *player)
 
     // cannot enter if the instance is full (player cap), GMs don't count
     uint32 maxPlayers = GetMaxPlayers();
-    if (!player->isGameMaster() && GetPlayersCountExceptGMs() >= maxPlayers)
+    if (!player->IsGameMaster() && GetPlayersCountExceptGMs() >= maxPlayers)
     {
         DETAIL_LOG("MAP: Instance '%u' of map '%s' cannot have more than '%u' players. Player '%s' rejected", GetInstanceId(), GetMapName(), maxPlayers, player->GetName());
         player->SendTransferAborted(TRANSFER_ABORT_MAX_PLAYERS);
@@ -1954,14 +1981,25 @@ bool DungeonMap::CanEnter(Player *player)
         return false;
     }
 
-    // cannot enter while an encounter is in progress
+    // World of Warcraft Client Patch 1.11.0 (2006-06-20)
+    // - Instituted an anti-exploit measure on certain encounters (almost 
+    //   entirely raid bosses).These encounters will prevent people from
+    //   zoning into the instance while that encounter is engaged.If you
+    //   attempt to zone into the instance while that encounter is engaged,
+    //   you will be resurrected at the outside entrance.We will be making
+    //   adjustments to the entrances to Molten Core and Blackwing Lair to
+    //   accommodate this change.Combat resurrections, soulstones,
+    //   reincarnate, etc.will still work fine.This is primarily to combat
+    //   graveyard rushing in instances.
+#if SUPPORTED_CLIENT_BUILD > CLIENT_BUILD_1_10_2
     Group *pGroup = player->GetGroup();
     if (IsRaid() && GetInstanceData() && GetInstanceData()->IsEncounterInProgress() && 
-        pGroup && pGroup->InCombatToInstance(GetInstanceId()) && player->isAlive() && !player->isGameMaster())
+        pGroup && pGroup->InCombatToInstance(GetInstanceId()) && player->isAlive() && !player->IsGameMaster())
     {
         player->SendTransferAborted(TRANSFER_ABORT_ZONE_IN_COMBAT);
         return false;
     }
+#endif
 
     if (GetId() == 509 || GetId() == 531)
     {
@@ -2378,58 +2416,12 @@ void Map::ScriptCommandStartDirect(const ScriptInfo& script, WorldObject* source
 
 bool Map::FindScriptInitialTargets(WorldObject*& source, WorldObject*& target, const ScriptAction& step)
 {
-    if (step.sourceGuid)
-    {
-        switch (step.sourceGuid.GetHigh())
-        {
-            case HIGHGUID_UNIT:
-                source = GetCreature(step.sourceGuid);
-                break;
-            case HIGHGUID_PET:
-                source = GetPet(step.sourceGuid);
-                break;
-            case HIGHGUID_PLAYER:
-                source = HashMapHolder<Player>::Find(step.sourceGuid);
-                break;
-            case HIGHGUID_GAMEOBJECT:
-                source = GetGameObject(step.sourceGuid);
-                break;
-            case HIGHGUID_CORPSE:
-                source = HashMapHolder<Corpse>::Find(step.sourceGuid);
-                break;
-            default:
-                sLog.outError("*_script source with unsupported guid %s", step.sourceGuid.GetString().c_str());
-                return false;
-        }
-    }
+    source = GetWorldObjectOrPlayer(step.sourceGuid);
 
     if (source && !source->IsInWorld())
         source = nullptr;
 
-    if (step.targetGuid)
-    {
-        switch (step.targetGuid.GetHigh())
-        {
-            case HIGHGUID_UNIT:
-                target = GetCreature(step.targetGuid);
-                break;
-            case HIGHGUID_PET:
-                target = GetPet(step.targetGuid);
-                break;
-            case HIGHGUID_PLAYER:
-                target = HashMapHolder<Player>::Find(step.targetGuid);
-                break;
-            case HIGHGUID_GAMEOBJECT:
-                target = GetGameObject(step.targetGuid);
-                break;
-            case HIGHGUID_CORPSE:
-                target = HashMapHolder<Corpse>::Find(step.targetGuid);
-                break;
-            default:
-                sLog.outError("*_script target with unsupported guid %s", step.targetGuid.GetString().c_str());
-                return false;
-        }
-    }
+    target = GetWorldObjectOrPlayer(step.targetGuid);
 
     if (target && !target->IsInWorld())
         target = nullptr;
@@ -2634,12 +2626,13 @@ void Map::ScriptsProcess()
         if (scriptResultOk)
             scriptResultOk = (this->*(m_ScriptCommands[step.script->command]))(*step.script, source, target);
 
+        m_scriptSchedule_lock.acquire();
+
         // Command returns true if we should abort script.
         if (scriptResultOk)
             TerminateScript(step);
         else
         {
-            m_scriptSchedule_lock.acquire();
             iter = m_scriptSchedule.begin();
 
             if (iter->second.script == step.script)
@@ -2735,7 +2728,7 @@ Unit* Map::GetUnit(ObjectGuid guid)
 }
 
 /**
- * Function return world object in world at CURRENT map, so any except transports
+ * Function returns world object in world at CURRENT map, so any except transports
  */
 WorldObject* Map::GetWorldObject(ObjectGuid guid)
 {
@@ -2755,7 +2748,7 @@ WorldObject* Map::GetWorldObject(ObjectGuid guid)
         {
             // corpse special case, it can be not in world
             Corpse* corpse = GetCorpse(guid);
-            return corpse && corpse->IsInWorld() ? corpse : NULL;
+            return corpse && corpse->IsInWorld() ? corpse : nullptr;
         }
         case HIGHGUID_MO_TRANSPORT:
         case HIGHGUID_TRANSPORT:
@@ -2763,7 +2756,32 @@ WorldObject* Map::GetWorldObject(ObjectGuid guid)
             break;
     }
 
-    return NULL;
+    return nullptr;
+}
+
+/**
+ * Function returns world object in world at CURRENT map, or player anywhere
+ */
+WorldObject* Map::GetWorldObjectOrPlayer(ObjectGuid guid)
+{
+    if (guid)
+    {
+        switch (guid.GetHigh())
+        {
+            case HIGHGUID_UNIT:
+                return GetCreature(guid);
+            case HIGHGUID_PET:
+                return GetPet(guid);
+            case HIGHGUID_PLAYER:
+                return HashMapHolder<Player>::Find(guid);
+            case HIGHGUID_GAMEOBJECT:
+                return GetGameObject(guid);
+            case HIGHGUID_CORPSE:
+                return HashMapHolder<Corpse>::Find(guid);
+        }
+    }
+
+    return nullptr;
 }
 
 class ObjectUpdatePacketBuilder : public ACE_Based::Runnable
@@ -3022,7 +3040,7 @@ uint32 Map::GenerateLocalLowGuid(HighGuid guidhigh)
 class StaticMonsterChatBuilder
 {
 public:
-    StaticMonsterChatBuilder(CreatureInfo const* cInfo, ChatMsg msgtype, int32 textId, uint32 language, Unit* target, uint32 senderLowGuid = 0)
+    StaticMonsterChatBuilder(CreatureInfo const* cInfo, ChatMsg msgtype, int32 textId, Language language, Unit const* target, uint32 senderLowGuid = 0)
         : i_cInfo(cInfo), i_msgtype(msgtype), i_textId(textId), i_language(language), i_target(target)
     {
         // 0 lowguid not used in core, but accepted fine in this case by client
@@ -3035,7 +3053,7 @@ public:
         std::string nameForLocale = "";
         if (loc_idx >= 0)
         {
-            CreatureLocale const *cl = sObjectMgr.GetCreatureLocale(i_cInfo->Entry);
+            CreatureLocale const *cl = sObjectMgr.GetCreatureLocale(i_cInfo->entry);
             if (cl)
             {
                 if (cl->Name.size() > (size_t)loc_idx && !cl->Name[loc_idx].empty())
@@ -3044,9 +3062,10 @@ public:
         }
 
         if (nameForLocale.empty())
-            nameForLocale = i_cInfo->Name;
+            nameForLocale = i_cInfo->name;
 
-        WorldObject::BuildWorldObjectChat(&data, i_senderGuid, i_msgtype, text, i_language, nameForLocale.c_str(), i_target ? i_target->GetObjectGuid() : ObjectGuid());
+        ChatHandler::BuildChatPacket(data, i_msgtype, text, i_language, CHAT_TAG_NONE, i_senderGuid, nameForLocale.c_str(), i_target ? i_target->GetObjectGuid() : ObjectGuid(),
+            i_target ? i_target->GetNameForLocaleIdx(loc_idx) : "");
     }
 
 private:
@@ -3054,8 +3073,8 @@ private:
     CreatureInfo const* i_cInfo;
     ChatMsg i_msgtype;
     int32 i_textId;
-    uint32 i_language;
-    Unit* i_target;
+    Language i_language;
+    Unit const* i_target;
 };
 
 
@@ -3067,7 +3086,7 @@ private:
  * @param language language of the text
  * @param target, can be NULL
  */
-void Map::MonsterYellToMap(ObjectGuid guid, int32 textId, uint32 language, Unit* target)
+void Map::MonsterYellToMap(ObjectGuid guid, int32 textId, Language language, Unit const* target) const
 {
     if (guid.IsAnyTypeCreature())
     {
@@ -3098,7 +3117,7 @@ void Map::MonsterYellToMap(ObjectGuid guid, int32 textId, uint32 language, Unit*
  * @param senderLowGuid provide way proper show yell for near spawned creature with known lowguid,
  *        0 accepted by client else if this not important
  */
-void Map::MonsterYellToMap(CreatureInfo const* cinfo, int32 textId, uint32 language, Unit* target, uint32 senderLowGuid /*= 0*/)
+void Map::MonsterYellToMap(CreatureInfo const* cinfo, int32 textId, Language language, Unit const* target, uint32 senderLowGuid /*= 0*/) const
 {
     StaticMonsterChatBuilder say_build(cinfo, CHAT_MSG_MONSTER_YELL, textId, language, target, senderLowGuid);
     MaNGOS::LocalizedPacketDo<StaticMonsterChatBuilder> say_do(say_build);
@@ -3109,18 +3128,20 @@ void Map::MonsterYellToMap(CreatureInfo const* cinfo, int32 textId, uint32 langu
 }
 
 /**
- * Function to play sound to all players in map
- *
- * @param soundId Played Sound
- */
-void Map::PlayDirectSoundToMap(uint32 soundId)
+* Function to play sound to all players in map
+*
+* @param soundId Played Sound
+* @param zoneId Id of the Zone to which the sound should be restricted
+*/
+void Map::PlayDirectSoundToMap(uint32 soundId, uint32 zoneId /*=0*/) const
 {
     WorldPacket data(SMSG_PLAY_SOUND, 4);
     data << uint32(soundId);
 
     Map::PlayerList const& pList = GetPlayers();
-    for (PlayerList::const_iterator itr = pList.begin(); itr != pList.end(); ++itr)
-        itr->getSource()->SendDirectMessage(&data);
+    for (const auto& itr : pList)
+        if (!zoneId || itr.getSource()->GetZoneId() == zoneId)
+            itr.getSource()->SendDirectMessage(&data);
 }
 
 
@@ -3474,6 +3495,15 @@ void Map::AddCorpseToRemove(Corpse* corpse, ObjectGuid looter_guid)
 {
     ACE_Guard<MapMutexType> guard(_corpseRemovalLock);
     _corpseToRemove.emplace_back(corpse, looter_guid);
+}
+
+/**
+* Remove bones from the list. Called from Corpse destructor.
+*/
+void Map::RemoveBones(Corpse* corpse)
+{
+    ACE_Guard<MapMutexType> guard(_bonesLock);
+    _bones.remove(corpse);
 }
 
 /**

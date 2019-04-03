@@ -230,8 +230,6 @@ enum eConfigUInt32Values
     CONFIG_UINT32_CREATURE_FAMILY_ASSISTANCE_DELAY,
     CONFIG_UINT32_CREATURE_FAMILY_FLEE_DELAY,
     CONFIG_UINT32_WORLD_BOSS_LEVEL_DIFF,
-    CONFIG_UINT32_QUEST_LOW_LEVEL_HIDE_DIFF,
-    CONFIG_UINT32_QUEST_HIGH_LEVEL_HIDE_DIFF,
     CONFIG_UINT32_CHAT_STRICT_LINK_CHECKING_SEVERITY,
     CONFIG_UINT32_CHAT_STRICT_LINK_CHECKING_KICK,
     CONFIG_UINT32_CORPSE_DECAY_NORMAL,
@@ -269,22 +267,8 @@ enum eConfigUInt32Values
     CONFIG_UINT32_CREATURE_SUMMON_LIMIT,
     CONFIG_UINT32_WAR_EFFORT_AUTOCOMPLETE_PERIOD,
     CONFIG_UINT32_ACCOUNT_CONCURRENT_AUCTION_LIMIT,
+    CONFIG_UINT32_BANLIST_RELOAD_TIMER,
     CONFIG_UINT32_VALUE_COUNT
-};
-
-enum WowPatch
-{
-    WOW_PATCH_102  = 0,
-    WOW_PATCH_103  = 1,
-    WOW_PATCH_104  = 2,
-    WOW_PATCH_105  = 3,
-    WOW_PATCH_106  = 4,
-    WOW_PATCH_107  = 5,
-    WOW_PATCH_108  = 6,
-    WOW_PATCH_109  = 7,
-    WOW_PATCH_110  = 8,
-    WOW_PATCH_111  = 9,
-    WOW_PATCH_112  = 10
 };
 
 enum
@@ -302,6 +286,8 @@ enum
 enum eConfigInt32Values
 {
     CONFIG_INT32_DEATH_SICKNESS_LEVEL = 0,
+    CONFIG_INT32_QUEST_LOW_LEVEL_HIDE_DIFF,
+    CONFIG_INT32_QUEST_HIGH_LEVEL_HIDE_DIFF,
     CONFIG_INT32_VALUE_COUNT
 };
 
@@ -310,7 +296,6 @@ enum eConfigFloatValues
 {
     CONFIG_FLOAT_RATE_HEALTH = 0,
     CONFIG_FLOAT_MAX_CREATURE_ATTACK_RADIUS,
-    CONFIG_FLOAT_MAX_CREATURES_STEALTH_DETECT_RANGE,
     CONFIG_FLOAT_MAX_PLAYERS_STEALTH_DETECT_RANGE,
     CONFIG_FLOAT_DYN_RESPAWN_CHECK_RANGE,
     CONFIG_FLOAT_DYN_RESPAWN_PERCENT_PER_PLAYER,
@@ -388,6 +373,7 @@ enum eConfigFloatValues
 enum eConfigBoolValues
 {
     CONFIG_BOOL_GRID_UNLOAD = 0,
+    CONFIG_BOOL_OBJECT_HEALTH_VALUE_SHOW,
     CONFIG_BOOL_IS_MAPSERVER,
     CONFIG_BOOL_GMS_ALLOW_PUBLIC_CHANNELS,
     CONFIG_BOOL_GMTICKETS_ENABLE,
@@ -396,7 +382,6 @@ enum eConfigBoolValues
     CONFIG_BOOL_GM_JOIN_OPPOSITE_FACTION_CHANNELS,
     CONFIG_BOOL_GM_ALLOW_TRADES,
     CONFIG_BOOL_DIE_COMMAND_CREDIT,
-    CONFIG_BOOL_ENABLE_CHAR_CREATION,
     CONFIG_BOOL_LOGSDB_CHAT,
     CONFIG_BOOL_LOGSDB_TRADES,
     CONFIG_BOOL_LOGSDB_CHARACTERS,
@@ -411,6 +396,7 @@ enum eConfigBoolValues
     CONFIG_BOOL_OUTDOORPVP_EP_ENABLE,
     CONFIG_BOOL_OUTDOORPVP_SI_ENABLE,
     CONFIG_BOOL_MMAP_ENABLED,
+    CONFIG_BOOL_PLAYER_COMMANDS,
     CONFIG_BOOL_SAVE_RESPAWN_TIME_IMMEDIATELY,
     CONFIG_BOOL_ALLOW_TWO_SIDE_ACCOUNTS,
     CONFIG_BOOL_ALLOW_TWO_SIDE_INTERACTION_CHAT,
@@ -456,7 +442,7 @@ enum eConfigBoolValues
     CONFIG_BOOL_CLEAN_CHARACTER_DB,
     CONFIG_BOOL_VMAP_INDOOR_CHECK,
     CONFIG_BOOL_PET_UNSUMMON_AT_MOUNT,
-    CONFIG_BOOL_ENABLE_VD,
+    CONFIG_BOOL_ENABLE_DK,
     CONFIG_BOOL_ENABLE_MOVEMENT_INTERP,
     CONFIG_BOOL_WHISPER_RESTRICTION,
     CONFIG_BOOL_MAILSPAM_ITEM,
@@ -467,24 +453,17 @@ enum eConfigBoolValues
     CONFIG_BOOL_ACCURATE_PVP_REWARDS,
     CONFIG_BOOL_BATTLEGROUND_RANDOMIZE,
     CONFIG_BOOL_SEND_LOOT_ROLL_UPON_RECONNECT,
-    CONFIG_BOOL_ACCURATE_MOUNTS,
     CONFIG_BOOL_ACCURATE_PETS,
     CONFIG_BOOL_ACCURATE_SPELL_EFFECTS,
     CONFIG_BOOL_ACCURATE_PVE_EVENTS,
     CONFIG_BOOL_ACCURATE_LFG,
+    CONFIG_BOOL_NO_RESPEC_PRICE_DECAY,
+    CONFIG_BOOL_NO_QUEST_XP_TO_GOLD,
+    CONFIG_BOOL_AUTO_HONOR_RESTART,
+    CONFIG_BOOL_RESTORE_DELETED_ITEMS,
+    CONFIG_BOOL_UNLINKED_AUCTION_HOUSES,
+    CONFIG_BOOL_PREVENT_ITEM_DATAMINING,
     CONFIG_BOOL_VALUE_COUNT
-};
-
-enum NostalriusConfig
-{
-    CONFIG_PHASE_MAIL,
-    CONFIG_PHASE_ITEM,
-    CONFIG_PHASE_WHISP,
-    CONFIG_PHASE_FRIEND,
-    CONFIG_PHASE_WHO,
-
-    CONFIG_BANLIST_RELOAD_TIMER,
-    CONFIG_NOSTALRIUS_MAX
 };
 
 /// Type of server
@@ -605,7 +584,7 @@ class World
         World();
         ~World();
 
-        typedef UNORDERED_MAP<uint32, WorldSession*> SessionMap;
+        typedef std::unordered_map<uint32, WorldSession*> SessionMap;
         typedef std::set<WorldSession*> SessionSet;
         SessionMap GetAllSessions() { return m_sessions; }
         WorldSession* FindSession(uint32 id) const;
@@ -646,7 +625,7 @@ class World
 
         // Get current server's WoW Patch
         uint8 GetWowPatch() const { return m_wowPatch; }
-        char* const GetPatchName() const;
+        char const* GetPatchName() const;
 
         LocaleConstant GetDefaultDbcLocale() const { return m_defaultDbcLocale; }
 
@@ -681,7 +660,6 @@ class World
 
         void SetInitialWorldSettings();
         void LoadConfigSettings(bool reload = false);
-        void LoadNostalriusConfig(bool reload = false);
 
         void SendWorldText(int32 string_id, ...);
          // Only for GMs with ticket notification ON
@@ -727,8 +705,6 @@ class World
         /// Get a server configuration element (see #eConfigBoolValues)
         bool getConfig(eConfigBoolValues index) const { return m_configBoolValues[index]; }
 
-        // Nostalrius
-        int32 getConfig(NostalriusConfig index) { return m_configNostalrius[index];}
         /// Are we on a "Player versus Player" server?
         bool IsPvPRealm() { return (getConfig(CONFIG_UINT32_GAME_TYPE) == REALM_TYPE_PVP || getConfig(CONFIG_UINT32_GAME_TYPE) == REALM_TYPE_RPPVP || getConfig(CONFIG_UINT32_GAME_TYPE) == REALM_TYPE_FFA_PVP); }
         bool IsFFAPvPRealm() { return getConfig(CONFIG_UINT32_GAME_TYPE) == REALM_TYPE_FFA_PVP; }
@@ -866,7 +842,6 @@ class World
         int32 m_configInt32Values[CONFIG_INT32_VALUE_COUNT];
         float m_configFloatValues[CONFIG_FLOAT_VALUE_COUNT];
         bool m_configBoolValues[CONFIG_BOOL_VALUE_COUNT];
-        int32 m_configNostalrius[CONFIG_NOSTALRIUS_MAX];
 
         int32 m_playerLimit;
         uint8 m_wowPatch;

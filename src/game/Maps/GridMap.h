@@ -25,7 +25,7 @@
 #include "GridDefines.h"
 #include "Object.h"
 #include "SharedDefines.h"
-
+#include <memory>
 #include <bitset>
 #include <list>
 
@@ -36,6 +36,7 @@ class InstanceData;
 class Group;
 class BattleGround;
 class Map;
+struct LiquidTypeEntry;
 
 struct GridMapFileHeader
 {
@@ -279,7 +280,7 @@ class MANGOS_DLL_SPEC TerrainInfo : public Referencable<AtomicLong>
 // class for managing TerrainData object and all sort of geometry querying operations
 class MANGOS_DLL_DECL TerrainManager : public MaNGOS::Singleton<TerrainManager, MaNGOS::ClassLevelLockable<TerrainManager, ACE_Thread_Mutex> >
 {
-        typedef UNORDERED_MAP<uint32,  TerrainInfo*> TerrainDataMap;
+        typedef std::unordered_map<uint32,  TerrainInfo*> TerrainDataMap;
         friend class MaNGOS::OperatorNew<TerrainManager>;
 
     public:
@@ -288,6 +289,10 @@ class MANGOS_DLL_DECL TerrainManager : public MaNGOS::Singleton<TerrainManager, 
 
         void Update(const uint32 diff);
         void UnloadAll();
+
+        // Liquid Types
+        LiquidTypeEntry const* GetLiquidType(uint32 id) const { return id < GetMaxLiquidType() ? mLiquidTypes[id].get() : nullptr; }
+        uint32 GetMaxLiquidType() const { return mLiquidTypes.size(); }
 
         uint16 GetAreaFlag(uint32 mapid, float x, float y, float z) const
         {
@@ -320,6 +325,9 @@ class MANGOS_DLL_DECL TerrainManager : public MaNGOS::Singleton<TerrainManager, 
 
         typedef MaNGOS::ClassLevelLockable<TerrainManager, ACE_Thread_Mutex>::Lock Guard;
         TerrainDataMap i_TerrainMap;
+
+        typedef std::vector<std::unique_ptr<LiquidTypeEntry>> LiquidTypeStore;
+        LiquidTypeStore mLiquidTypes;
 };
 
 #define sTerrainMgr TerrainManager::Instance()

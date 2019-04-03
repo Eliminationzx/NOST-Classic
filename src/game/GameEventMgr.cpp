@@ -507,13 +507,15 @@ void GameEventMgr::LoadFromDB()
 
             if (newData.spell_id_start && !sSpellMgr.GetSpellEntry(newData.spell_id_start))
             {
-                sLog.outErrorDb("Table `game_event_creature_data` have creature (Guid: %u) with nonexistent spell_start %u, set to no start spell.", guid, newData.spell_id_start);
+                if (!sSpellMgr.IsExistingSpellId(newData.spell_id_start))
+                    sLog.outErrorDb("Table `game_event_creature_data` have creature (Guid: %u) with nonexistent spell_start %u, set to no start spell.", guid, newData.spell_id_start);
                 newData.spell_id_start = 0;
             }
 
             if (newData.spell_id_end && !sSpellMgr.GetSpellEntry(newData.spell_id_end))
             {
-                sLog.outErrorDb("Table `game_event_creature_data` have creature (Guid: %u) with nonexistent spell_end %u, set to no end spell.", guid, newData.spell_id_end);
+                if (!sSpellMgr.IsExistingSpellId(newData.spell_id_end))
+                    sLog.outErrorDb("Table `game_event_creature_data` have creature (Guid: %u) with nonexistent spell_end %u, set to no end spell.", guid, newData.spell_id_end);
                 newData.spell_id_end = 0;
             }
 
@@ -530,7 +532,7 @@ void GameEventMgr::LoadFromDB()
 
     mGameEventQuests.resize(mGameEvent.size());
 
-    result = WorldDatabase.PQuery("SELECT quest, event FROM game_event_quest WHERE patch <= %u", sWorld.GetWowPatch());
+    result = WorldDatabase.PQuery("SELECT quest, event FROM game_event_quest WHERE patch_min <= %u", sWorld.GetWowPatch());
 
     count = 0;
     if (!result)
@@ -591,6 +593,7 @@ void GameEventMgr::LoadFromDB()
 
     mGameEventMails.resize(mGameEvent.size() * 2 - 1);
 
+#if SUPPORTED_CLIENT_BUILD > CLIENT_BUILD_1_9_4
     result = WorldDatabase.Query("SELECT event, raceMask, quest, mailTemplateId, senderEntry FROM game_event_mail");
 
     count = 0;
@@ -669,6 +672,7 @@ void GameEventMgr::LoadFromDB()
         sLog.outString();
         sLog.outString(">> Loaded %u start/end game event mails", count);
     }
+#endif
 }
 
 uint32 GameEventMgr::Initialize()                           // return the next event delay in ms

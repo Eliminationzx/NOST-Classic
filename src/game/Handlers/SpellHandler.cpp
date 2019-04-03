@@ -149,12 +149,7 @@ void WorldSession::HandleUseItemOpcode(WorldPacket& recvPacket)
         return;
     }
 
-    //Note: If script stop casting it must send appropriate data to client to prevent stuck item in gray state.
-    if (!sScriptMgr.OnItemUse(pUser, pItem, targets))
-    {
-        // no script or script not process request by self
-        pUser->CastItemUseSpell(pItem, targets);
-    }
+    pUser->CastItemUseSpell(pItem, targets);
 }
 
 #define OPEN_CHEST 11437
@@ -328,15 +323,14 @@ void WorldSession::HandleCastSpellOpcode(WorldPacket& recvPacket)
     if (Unit* target = targets.getUnitTarget())
     {
         // Cannot cast negative spells on yourself. Handle it here since casting negative
-        // spells on yourself is frequently used within the core itself for certain
-        // mechanics... ZZZ
-        // Some AoE affects have the player as the unit target (TARGET_CASTER_COORDINATES),
-        // we don't need to check them because the targets are defined by the server anyway.
-        // Spells with SPELL_DAMAGE_CLASS_NONE should be castable on self, even if negative.
-        if (target == _player && spellInfo->DmgClass != SPELL_DAMAGE_CLASS_NONE &&
-            !IsAreaOfEffectSpell(spellInfo) && !IsPositiveSpell(spellInfo, _player, target))
+        // spells on yourself is frequently used within the core itself for certain mechanics.
+        if (target == _player && IsExplicitlySelectedUnitTarget(spellInfo->EffectImplicitTargetA[0]) && !IsPositiveSpell(spellInfo, _player, target))
         {
-            recvPacket.rpos(recvPacket.wpos());                 // prevent spam at ignore packet
+            WorldPacket data(SMSG_CAST_RESULT, (4 + 1 + 1));
+            data << uint32(spellId);
+            data << uint8(2); // status = fail
+            data << uint8(SPELL_FAILED_BAD_TARGETS);
+            SendPacket(&data);
             return;
         }
 
@@ -345,9 +339,15 @@ void WorldSession::HandleCastSpellOpcode(WorldPacket& recvPacket)
             spellInfo = actualSpellInfo;
     }
 
+    // World of Warcraft Client Patch 1.10.0 (2006-03-28)
+    // - Stealth and Invisibility effects will now be canceled at the
+    //   beginning of an action(spellcast, ability use etc...), rather than
+    //   at the completion of the action.
+#if SUPPORTED_CLIENT_BUILD > CLIENT_BUILD_1_9_4
     // Remove invisibility except Gnomish Cloaking Device, since evidence suggests
     // it remains until cast finish
     _player->RemoveAurasWithInterruptFlags(AURA_INTERRUPT_FLAG_ON_CAST_SPELL, 4079);
+#endif
 
     _player->m_castingSpell = spellId;
     if (spellInfo->SpellFamilyName == SPELLFAMILY_ROGUE)
@@ -384,7 +384,7 @@ void WorldSession::HandleCancelAuraOpcode(WorldPacket& recvPacket)
     recvPacket >> spellId;
 
     // Buff MJ '.gm visible off'.
-    if (spellId == 16380 && !_player->isGMVisible())
+    if (spellId == 16380 && !_player->IsGMVisible())
         return;
 
     SpellEntry const *spellInfo = sSpellMgr.GetSpellEntry(spellId);

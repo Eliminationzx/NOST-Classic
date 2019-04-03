@@ -284,7 +284,7 @@ WarEffortGameEvents GetActiveTransportEvent()
 ## npc_AQwar_collector
 ###*/
 
-// UPDATE `creature_template` SET `ScriptName` = 'npc_AQwar_collector' WHERE `subname` like '%collector%' and subname not like '%ancestry%';
+// UPDATE `creature_template` SET `script_name` = 'npc_AQwar_collector' WHERE `subname` like '%collector%' and subname not like '%ancestry%';
 
 struct npc_AQwar_collectorAI : CreatureAI
 {
@@ -728,7 +728,7 @@ CreatureAI *GetAI_npc_AQwar_collector(Creature *pCreature)
 ## npc_resonating_Crystal
 ######*/
 
-// UPDATE `creature_template` SET `ScriptName` = 'npc_resonating_Crystal' WHERE `entry` = 15769;
+// UPDATE `creature_template` SET `script_name` = 'npc_resonating_Crystal' WHERE `entry` = 15769;
 
 enum
 {
@@ -799,7 +799,7 @@ struct npc_resonating_CrystalAI : public ScriptedAI
 
     void MoveInLineOfSight(Unit* who)
     {
-        if (who->GetTypeId() != TYPEID_PLAYER || who->ToPlayer()->isGameMaster())
+        if (who->GetTypeId() != TYPEID_PLAYER || who->ToPlayer()->IsGameMaster())
             return;
 
         if (!who->isAlive())
@@ -815,7 +815,7 @@ struct npc_resonating_CrystalAI : public ScriptedAI
         for (Map::PlayerList::const_iterator itr = players.begin(); itr != players.end(); ++itr)
         {
             Player* pPlayer = itr->getSource();
-            if (pPlayer && pPlayer->isAlive() && m_creature->IsWithinDistInMap(pPlayer, MAX_SIGHT_DISTANCE) && !pPlayer->isGameMaster())
+            if (pPlayer && pPlayer->isAlive() && m_creature->IsWithinDistInMap(pPlayer, MAX_SIGHT_DISTANCE) && !pPlayer->IsGameMaster())
                 ++var;
 
             if (var > 1)
@@ -830,7 +830,7 @@ struct npc_resonating_CrystalAI : public ScriptedAI
         for (Map::PlayerList::const_iterator itr = players.begin(); itr != players.end(); ++itr)
         {
             Player* pPlayer = itr->getSource();
-            if (pPlayer && pPlayer->isAlive() && m_creature->IsWithinDistInMap(pPlayer, MAX_SIGHT_DISTANCE) && !pPlayer->isGameMaster())
+            if (pPlayer && pPlayer->isAlive() && m_creature->IsWithinDistInMap(pPlayer, MAX_SIGHT_DISTANCE) && !pPlayer->IsGameMaster())
             {
                 m_creature->AddThreat(pPlayer);
                 m_creature->SetInCombatWith(pPlayer);

@@ -148,7 +148,7 @@ inline void MaNGOS::DynamicObjectUpdater::VisitHelper(Unit* target)
         return;
 
     //Check player targets and remove if in GM mode or GM invisibility (for not self casting case)
-    if (target->GetTypeId() == TYPEID_PLAYER && target != i_check && (((Player*)target)->isGameMaster() || ((Player*)target)->GetVisibility() == VISIBILITY_OFF))
+    if (target->GetTypeId() == TYPEID_PLAYER && target != i_check && (((Player*)target)->IsGameMaster() || ((Player*)target)->GetVisibility() == VISIBILITY_OFF))
         return;
 
     if (!i_positive && !i_check->IsValidAttackTarget(target))
@@ -178,9 +178,9 @@ inline void MaNGOS::DynamicObjectUpdater::VisitHelper(Unit* target)
     {
         if (CreatureAI* pAi = target->AI())
             pAi->AttackedBy(i_check);
-        i_check->SetInCombatWith(target);
-        target->SetInCombatWith(i_check);
-        i_check->SetContestedPvP(target);
+
+        target->SetInCombatWithAggressor(i_check);
+        i_check->SetInCombatWithVictim(target);
     }
     // Check target immune to spell or aura
     if (target->IsImmuneToSpell(spellInfo, false) || target->IsImmuneToSpellEffect(spellInfo, eff_index, false))
@@ -567,25 +567,22 @@ template<class Builder>
 void MaNGOS::LocalizedPacketDo<Builder>::operator()( Player* p )
 {
     int32 loc_idx = p->GetSession()->GetSessionDbLocaleIndex();
-    uint32 cache_idx = loc_idx+1;
-    WorldPacket* data;
+    uint32 cache_idx = loc_idx + 1;
 
     // create if not cached yet
-    if (i_data_cache.size() < cache_idx+1 || !i_data_cache[cache_idx])
+    if (i_data_cache.size() < cache_idx + 1 || !i_data_cache[cache_idx])
     {
-        if (i_data_cache.size() < cache_idx+1)
-            i_data_cache.resize(cache_idx+1);
+        if (i_data_cache.size() < cache_idx + 1)
+            i_data_cache.resize(cache_idx + 1);
 
-        data = new WorldPacket(SMSG_MESSAGECHAT, 200);
+        auto data = std::unique_ptr<WorldPacket>(new WorldPacket());
 
         i_builder(*data, loc_idx);
 
-        i_data_cache[cache_idx] = data;
+        i_data_cache[cache_idx] = std::move(data);
     }
-    else
-        data = i_data_cache[cache_idx];
 
-    p->SendDirectMessage(data);
+    p->SendDirectMessage(i_data_cache[cache_idx].get());
 }
 
 template<class Builder>

@@ -37,7 +37,6 @@ void AddSC_areatrigger_scripts();
 void AddSC_dragons_of_nightmare();
 void AddSC_boss_lord_kazzak();
 void AddSC_go_scripts();
-void AddSC_npc_professions();
 void AddSC_npcs_special();
 void AddSC_Totems();
 void AddSC_world_event_naxxramas();
@@ -129,7 +128,6 @@ void AddSC_boss_interrogator_vishas();
 void AddSC_boss_mograine_and_whitemane();
 void AddSC_instance_scarlet_monastery();
 void AddSC_boss_darkmaster_gandling();               //scholomance
-void AddSC_boss_death_knight_darkreaver();
 void AddSC_boss_theolenkrastinov();
 void AddSC_boss_illuciabarov();
 void AddSC_boss_instructormalicia();
@@ -206,7 +204,6 @@ void AddSC_westfall();
 void AddSC_wetlands();
 
 //kalimdor
-//void AddSC_jcj_tanaris();									//eventjcj
 void AddSC_instance_blackfathom_deeps();             //blackfathom_deeps
 void AddSC_boss_celebras_the_cursed();               //maraudon
 void AddSC_boss_landslide();
@@ -216,7 +213,6 @@ void AddSC_maraudon();
 void AddSC_instance_maraudon();
 void AddSC_instance_onyxia_lair();
 void AddSC_boss_onyxia();                            //onyxias_lair
-void AddSC_boss_amnennar_the_coldbringer();          //razorfen_downs
 void AddSC_razorfen_downs();
 void AddSC_razorfen_kraul();                         //razorfen_kraul
 void AddSC_instance_razorfen_kraul();
@@ -227,7 +223,6 @@ void AddSC_boss_kurinnaxx();
 void AddSC_boss_moam();
 void AddSC_boss_ossirian();
 void AddSC_boss_rajaxx();
-//void AddSC_npc_sandstalker(); 						// trash
 void AddSC_ruins_of_ahnqiraj();
 void AddSC_instance_ruins_of_ahnqiraj();
 void AddSC_boss_cthun();                             //temple_of_ahnqiraj
@@ -305,7 +300,6 @@ void AddScripts()
     AddSC_dragons_of_nightmare();
     AddSC_boss_lord_kazzak();
     AddSC_go_scripts();
-    AddSC_npc_professions();
     AddSC_npcs_special();
     AddSC_Totems();
     AddSC_world_event_naxxramas();
@@ -397,7 +391,6 @@ void AddScripts()
     AddSC_boss_mograine_and_whitemane();
     AddSC_instance_scarlet_monastery();
     AddSC_boss_darkmaster_gandling();                       //scholomance
-    AddSC_boss_death_knight_darkreaver();
     AddSC_boss_theolenkrastinov();
     AddSC_boss_illuciabarov();
     AddSC_boss_instructormalicia();
@@ -474,7 +467,6 @@ void AddScripts()
     AddSC_wetlands();
 
     //kalimdor
-	//AddSC_jcj_tanaris();									//eventjcj
     AddSC_instance_blackfathom_deeps();                     //blackfathom_deeps
     AddSC_boss_celebras_the_cursed();                       //maraudon
     AddSC_boss_landslide();
@@ -484,22 +476,20 @@ void AddScripts()
     AddSC_instance_maraudon();
     AddSC_instance_onyxia_lair();
     AddSC_boss_onyxia();                                    //onyxias_lair
-    AddSC_boss_amnennar_the_coldbringer();                  //razorfen_downs
     AddSC_razorfen_downs();
     AddSC_razorfen_kraul();                                 //razorfen_kraul
     AddSC_instance_razorfen_downs();
     AddSC_instance_razorfen_kraul();
-	AddSC_boss_ayamiss();                                   //ruins_of_ahnqiraj
+    AddSC_boss_ayamiss();                                   //ruins_of_ahnqiraj
     AddSC_boss_buru();
     AddSC_boss_kurinnaxx();
     AddSC_boss_moam();
     AddSC_boss_ossirian();
     AddSC_boss_rajaxx();
     AddSC_ruins_of_ahnqiraj();
-	//AddSC_npc_sandstalker();								//trash
     AddSC_instance_ruins_of_ahnqiraj();
     AddSC_boss_cthun();                                     //temple_of_ahnqiraj
-	AddSC_boss_viscidus();
+    AddSC_boss_viscidus();
     AddSC_boss_fankriss();
     AddSC_boss_huhuran();
     AddSC_bug_trio();

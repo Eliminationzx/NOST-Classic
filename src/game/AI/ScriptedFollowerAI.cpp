@@ -154,8 +154,8 @@ void FollowerAI::JustRespawned()
     if (!IsCombatMovementEnabled())
         SetCombatMovement(true);
 
-    if (m_creature->getFaction() != m_creature->GetCreatureInfo()->faction_A)
-        m_creature->setFaction(m_creature->GetCreatureInfo()->faction_A);
+    if (m_creature->getFaction() != m_creature->GetCreatureInfo()->faction)
+        m_creature->setFaction(m_creature->GetCreatureInfo()->faction);
 
     Reset();
 }
@@ -171,20 +171,40 @@ void FollowerAI::EnterEvadeMode()
     {
         // it looks like FollowerAI does not need returning to combatStart position
         // instead lets make it return to the leader
-        if (m_creature->GetMotionMaster()->GetCurrentMovementGeneratorType() == CHASE_MOTION_TYPE)
+        switch (m_creature->GetMotionMaster()->GetCurrentMovementGeneratorType())
         {
-            if (!HasFollowState(STATE_FOLLOW_PAUSED))
-                AddFollowState(STATE_FOLLOW_RETURNING);
+            case IDLE_MOTION_TYPE:
+            case CONFUSED_MOTION_TYPE:
+            case CHASE_MOTION_TYPE:
+            case FLEEING_MOTION_TYPE:
+            case DISTRACT_MOTION_TYPE:
+            case CHARGE_MOTION_TYPE:
+            case DISTANCING_MOTION_TYPE:
+            {
+                if (!HasFollowState(STATE_FOLLOW_PAUSED))
+                    AddFollowState(STATE_FOLLOW_RETURNING);
+            }
         }
     }
     else
     {
-        if (m_creature->GetMotionMaster()->GetCurrentMovementGeneratorType() == CHASE_MOTION_TYPE)
-            m_creature->GetMotionMaster()->MoveTargetedHome();
+        switch (m_creature->GetMotionMaster()->GetCurrentMovementGeneratorType())
+        {
+            case IDLE_MOTION_TYPE:
+            case CONFUSED_MOTION_TYPE:
+            case CHASE_MOTION_TYPE:
+            case FLEEING_MOTION_TYPE:
+            case DISTRACT_MOTION_TYPE:
+            case CHARGE_MOTION_TYPE:
+            case DISTANCING_MOTION_TYPE:
+            {
+                m_creature->GetMotionMaster()->MoveTargetedHome();
+            }
+        }
     }
 
     // Reset back to default spells template. This also resets timers.
-    SetSpellsTemplate(m_creature->GetCreatureInfo()->spells_template);
+    SetSpellsList(m_creature->GetCreatureInfo()->spell_list_id);
 
     Reset();
 }
@@ -202,7 +222,7 @@ void FollowerAI::UpdateAI(const uint32 uiDiff)
                 return;
             }
 
-            bool bIsMaxRangeExceeded = true;
+            bool bShouldAbort = true;
 
             if (Player* pPlayer = GetLeaderForFollower())
             {
@@ -223,7 +243,7 @@ void FollowerAI::UpdateAI(const uint32 uiDiff)
 
                         if (pMember && m_creature->IsWithinDistInMap(pMember, MAX_PLAYER_DISTANCE))
                         {
-                            bIsMaxRangeExceeded = false;
+                            bShouldAbort = false;
                             break;
                         }
                     }
@@ -231,17 +251,20 @@ void FollowerAI::UpdateAI(const uint32 uiDiff)
                 else
                 {
                     if (m_creature->IsWithinDistInMap(pPlayer, MAX_PLAYER_DISTANCE))
-                        bIsMaxRangeExceeded = false;
+                        bShouldAbort = false;
                 }
+
+                if (!bShouldAbort && m_pQuestForFollow && !HasFollowState(STATE_FOLLOW_COMPLETE) && (pPlayer->GetQuestStatus(m_pQuestForFollow->GetQuestId()) != QUEST_STATUS_INCOMPLETE))
+                    bShouldAbort = true;
 
                 // allow postEvent to happen even if quest credit is already handled
                 /*if (HasFollowState(STATE_FOLLOW_COMPLETE | STATE_FOLLOW_POSTEVENT))
                     bIsMaxRangeExceeded = false;*/
             }
 
-            if (bIsMaxRangeExceeded)
+            if (bShouldAbort)
             {
-                sLog.outDebug("FollowerAI failed because player/group was to far away or not found");
+                sLog.outDebug("FollowerAI failed because quest failed or player/group was to far away or not found");
                 SetFollowPaused(false);
                 m_creature->DisappearAndDie();
                 return;
@@ -262,7 +285,7 @@ void FollowerAI::UpdateFollowerAI(const uint32 uiDiff)
         return;
 
     if (!m_CreatureSpells.empty())
-        DoSpellTemplateCasts(uiDiff);
+        DoSpellsListCasts(uiDiff);
 
     DoMeleeAttackIfReady();
 }

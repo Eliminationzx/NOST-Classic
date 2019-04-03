@@ -194,29 +194,40 @@ typedef ACE_Thread_Mutex MapMutexType; // Use ACE_Null_Mutex to disable locks
 
 typedef bool(Map::*ScriptCommandFunction) (const ScriptInfo& script, WorldObject* source, WorldObject* target);
 
+// Additional target part of a ScriptedEvent. 
 struct ScriptedEventTarget
 {
-    ScriptedEventTarget(WorldObject* object, uint32 failureCondition, uint32 failureScript, uint32 successCondition, uint32 successScript) :
-        pObject(object), uiFailureCondition(failureCondition), uiFailureScript(failureScript), uiSuccessCondition(successCondition), uiSuccessScript(successScript) {}
+    ScriptedEventTarget(ObjectGuid object, uint32 failureCondition, uint32 failureScript, uint32 successCondition, uint32 successScript) :
+        target(object), uiFailureCondition(failureCondition), uiFailureScript(failureScript), uiSuccessCondition(successCondition), uiSuccessScript(successScript) {}
 
-    WorldObject* pObject;
+    ObjectGuid target;
     uint32 uiFailureCondition;
     uint32 uiFailureScript;
     uint32 uiSuccessCondition;
     uint32 uiSuccessScript;
 };
 
+// Used for complex database scripts.
+// - Can hold data.
+// - Updated by the map every 1 second.
+// - Can have success condition and script.
+// - Can have failure condition and script.
+// - Has 2 main targets.
+// - Can have many extra target objects, with their own success/failure conditions and scripts.
+// - Scripts can end the event at any point.
+// - Event targets can be accessed by scripts.
 struct ScriptedEvent
 {
-    ScriptedEvent(uint32 eventId, WorldObject* source, WorldObject* target, Map* map, time_t expireTime, uint32 failureCondition, uint32 failureScript, uint32 successCondition, uint32 successScript) :
-        m_uiEventId(eventId), m_pSource(source), m_pTarget(target), m_pMap(map), m_tExpireTime(expireTime), m_uiFailureCondition(failureCondition), m_uiFailureScript(failureScript), m_uiSuccessCondition(successCondition), m_uiSuccessScript(successScript) {}
+    ScriptedEvent(uint32 eventId, ObjectGuid source, ObjectGuid target, Map& map, time_t expireTime, uint32 failureCondition, uint32 failureScript, uint32 successCondition, uint32 successScript) :
+        m_uiEventId(eventId), m_Source(source), m_Target(target), m_Map(map), m_tExpireTime(expireTime), m_uiFailureCondition(failureCondition), m_uiFailureScript(failureScript), m_uiSuccessCondition(successCondition), m_uiSuccessScript(successScript), m_bEnded(false) {}
     
-    WorldObject* m_pSource;
-    WorldObject* m_pTarget;
-    Map* const m_pMap;
+    ObjectGuid m_Source;
+    ObjectGuid m_Target;
+    Map& m_Map;
 
     const uint32 m_uiEventId;
     time_t m_tExpireTime;
+    bool m_bEnded;
 
     uint32 m_uiFailureCondition;
     uint32 m_uiFailureScript;
@@ -236,6 +247,47 @@ struct ScriptedEvent
     void SendEventToAdditionalTargets(uint32 uiData);
 
     void SendEventToAllTargets(uint32 uiData);
+
+    void SetSourceObject(WorldObject* pSource)
+    {
+        if (pSource && pSource->IsInWorld() && (pSource->GetMap() == &m_Map))
+        {
+            m_Source = pSource->GetObjectGuid();
+        }
+    }
+
+    void SetTargetObject(WorldObject* pTarget)
+    {
+        if (pTarget && pTarget->IsInWorld() && (pTarget->GetMap() == &m_Map))
+        {
+            m_Target = pTarget->GetObjectGuid();
+        }
+    }
+
+    void AddOrUpdateExtraTarget(WorldObject* pObject, uint32 failureCondition, uint32 failureScript, uint32 successCondition, uint32 successScript)
+    {
+        if (!pObject || !pObject->IsInWorld() || (pObject->GetMap() != &m_Map))
+            return;
+
+        for (auto& target : m_vTargets)
+        {
+            // If target already exists, just update data.
+            if (target.target == pObject->GetObjectGuid())
+            {
+                target.uiFailureCondition = failureCondition;
+                target.uiFailureScript = failureScript;
+                target.uiSuccessCondition = successCondition;
+                target.uiSuccessScript = successScript;
+                return;
+            }
+        }
+
+        m_vTargets.emplace_back(pObject->GetObjectGuid(), failureCondition, failureScript, successCondition, successScript);
+    }
+
+    WorldObject* GetSourceObject() const;
+
+    WorldObject* GetTargetObject() const;
 
     uint32 GetData(uint32 uiIndex) const
     {
@@ -309,10 +361,10 @@ class MANGOS_DLL_SPEC Map : public GridRefManager<NGridType>, public MaNGOS::Obj
         void UpdateSessionsMovementAndSpellsIfNeeded();
         void ProcessSessionPackets(PacketProcessing type);
 
-        void MessageBroadcast(Player*, WorldPacket*, bool to_self);
-        void MessageBroadcast(WorldObject*, WorldPacket*);
-        void MessageDistBroadcast(Player*, WorldPacket*, float dist, bool to_self, bool own_team_only = false);
-        void MessageDistBroadcast(WorldObject*, WorldPacket*, float dist);
+        void MessageBroadcast(Player const*, WorldPacket*, bool to_self);
+        void MessageBroadcast(WorldObject const*, WorldPacket*);
+        void MessageDistBroadcast(Player const*, WorldPacket*, float dist, bool to_self, bool own_team_only = false);
+        void MessageDistBroadcast(WorldObject const*, WorldPacket*, float dist);
 
         float GetVisibilityDistance() const { return m_VisibleDistance; }
         float GetGridActivationDistance() const { return m_GridActivationDistance; }
@@ -442,9 +494,10 @@ class MANGOS_DLL_SPEC Map : public GridRefManager<NGridType>, public MaNGOS::Obj
         Creature* GetAnyTypeCreature(ObjectGuid guid);      // normal creature or pet
         Transport* GetTransport(ObjectGuid guid);
         DynamicObject* GetDynamicObject(ObjectGuid guid);
-        Corpse* GetCorpse(ObjectGuid guid);                 // !!! find corpse can be not in world
-        Unit* GetUnit(ObjectGuid guid);                     // only use if sure that need objects at current map, specially for player case
-        WorldObject* GetWorldObject(ObjectGuid guid);       // only use if sure that need objects at current map, specially for player case
+        Corpse* GetCorpse(ObjectGuid guid);                   // !!! find corpse can be not in world
+        Unit* GetUnit(ObjectGuid guid);                       // only use if sure that need objects at current map, specially for player case
+        WorldObject* GetWorldObject(ObjectGuid guid);         // only use if sure that need objects at current map, specially for player case
+        WorldObject* GetWorldObjectOrPlayer(ObjectGuid guid); // Returns a world object from current map, or player anywhere.
 
         template <typename T> void InsertObject(ObjectGuid const& guid, T* ptr)
         {
@@ -521,9 +574,9 @@ class MANGOS_DLL_SPEC Map : public GridRefManager<NGridType>, public MaNGOS::Obj
         InstanceData const* GetInstanceData() const { return i_data; }
         uint32 GetScriptId() const { return i_script_id; }
 
-        void MonsterYellToMap(ObjectGuid guid, int32 textId, uint32 language, Unit* target);
-        void MonsterYellToMap(CreatureInfo const* cinfo, int32 textId, uint32 language, Unit* target, uint32 senderLowGuid = 0);
-        void PlayDirectSoundToMap(uint32 soundId);
+        void MonsterYellToMap(ObjectGuid guid, int32 textId, Language language, Unit const* target) const;
+        void MonsterYellToMap(CreatureInfo const* cinfo, int32 textId, Language language, Unit const* target, uint32 senderLowGuid = 0) const;
+        void PlayDirectSoundToMap(uint32 soundId, uint32 zoneId = 0) const;
 
         // GameObjectCollision
         float GetHeight(float x, float y, float z, bool vmap = true, float maxSearchDist = DEFAULT_HEIGHT_SEARCH) const;
@@ -609,7 +662,7 @@ class MANGOS_DLL_SPEC Map : public GridRefManager<NGridType>, public MaNGOS::Obj
         GameObject* SummonGameObject(uint32 entry, float x, float y, float z, float ang, float rotation0, float rotation1, float rotation2, float rotation3, uint32 respawnTime, uint32 worldMask);
 
         bool ShouldUpdateMap(uint32 now, uint32 inactiveTimeLimit);
-        uint32 GetLastMapUpdate() const { return _lastMapUpdate; }
+        void RemoveBones(Corpse* corpse);
 
     private:
         void LoadMapAndVMap(int gx, int gy);
@@ -839,6 +892,8 @@ class MANGOS_DLL_SPEC Map : public GridRefManager<NGridType>, public MaNGOS::Obj
         bool ScriptCommand_CombatStop(const ScriptInfo& script, WorldObject* source, WorldObject* target);
         bool ScriptCommand_AddAura(const ScriptInfo& script, WorldObject* source, WorldObject* target);
         bool ScriptCommand_AddThreat(const ScriptInfo& script, WorldObject* source, WorldObject* target);
+        bool ScriptCommand_SummonObject(const ScriptInfo& script, WorldObject* source, WorldObject* target);
+        bool ScriptCommand_SetFly(const ScriptInfo& script, WorldObject* source, WorldObject* target);
 
         // Add any new script command functions to the array.
         const ScriptCommandFunction m_ScriptCommands[SCRIPT_COMMAND_MAX] =
@@ -919,6 +974,8 @@ class MANGOS_DLL_SPEC Map : public GridRefManager<NGridType>, public MaNGOS::Obj
             &Map::ScriptCommand_CombatStop,             // 73
             &Map::ScriptCommand_AddAura,                // 74
             &Map::ScriptCommand_AddThreat,              // 75
+            &Map::ScriptCommand_SummonObject,           // 76
+            &Map::ScriptCommand_SetFly,                 // 77
         };
 
     public:

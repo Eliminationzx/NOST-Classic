@@ -5,6 +5,7 @@
 #include "SharedDefines.h"
 
 #include <vector>
+#include <memory>
 
 class Player;
 
@@ -25,31 +26,27 @@ struct AuctionHouseBotConfig
     uint64 botguid;
     uint32 botaccount;
 
-    uint64 auctionnerguid;
     bool enable;
 };
 
 class AuctionHouseBotMgr
 {
     public :
-        AuctionHouseBotMgr();
+        AuctionHouseBotMgr() = default;
         ~AuctionHouseBotMgr();
 
-        void load();
+        void Load();
 
-        /**
-        void update(bool force = false);
-        Si force = true, met des items en vente meme si le bot est desactive
-        */
-        void update(bool force = false);
-        void additem(AuctionHouseBotEntry e, AuctionHouseObject *auctionHouse );
+        // force - put items in AH even if bot is disabled
+        void Update(bool force = false);
+        void AddItem(AuctionHouseBotEntry e, AuctionHouseObject *auctionHouse );
 
     protected:
-        std::vector<AuctionHouseBotEntry> entries;
-        AuctionHouseBotConfig* config;
-        AuctionHouseEntry const* auctionHouseEntry;
+        std::vector<AuctionHouseBotEntry> m_items;
+        std::unique_ptr<AuctionHouseBotConfig> m_config;
+        AuctionHouseEntry const* m_auctionHouseEntry = nullptr;
 
-        bool m_loaded;
+        bool m_loaded = false;
 };
 
 #define sAuctionHouseBotMgr MaNGOS::Singleton< AuctionHouseBotMgr >::Instance()

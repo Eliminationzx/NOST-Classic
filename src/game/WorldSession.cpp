@@ -673,7 +673,7 @@ void WorldSession::LogoutPlayer(bool Save)
             _player->LeaveBattleground(true);
 
         ///- Teleport to home if the player is in an invalid instance
-        if (!_player->m_InstanceValid && !_player->isGameMaster())
+        if (!_player->m_InstanceValid && !_player->IsGameMaster())
         {
             _player->TeleportToHomebind();
             //this is a bad place to call for far teleport because we need player to be in world for successful logout
@@ -730,7 +730,7 @@ void WorldSession::LogoutPlayer(bool Save)
         {
             if (map->IsNonRaidDungeon() && _player->GetGroup())
             {
-                AreaTrigger const* at = sObjectMgr.GetGoBackTrigger(map->GetId());
+                AreaTriggerTeleport const* at = sObjectMgr.GetGoBackTrigger(map->GetId());
                 if (at)
                     removedFromMap = _player->TeleportTo(at->target_mapId, at->target_X, at->target_Y, at->target_Z, _player->GetOrientation());
                 else

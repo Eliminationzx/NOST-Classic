@@ -609,7 +609,7 @@ class MANGOS_DLL_SPEC GameObject : public WorldObject
         }
         void SetRespawnDelay(time_t respawn)
         {
-        	m_respawnDelayTime = respawn;
+            m_respawnDelayTime = respawn;
         }
         void Respawn();
         bool isSpawned() const
@@ -689,6 +689,7 @@ class MANGOS_DLL_SPEC GameObject : public WorldObject
         bool HasQuest(uint32 quest_id) const;
         bool HasInvolvedQuest(uint32 quest_id) const;
         bool ActivateToQuest(Player *pTarget) const;
+        uint32 GetDefaultGossipMenuId() const override { return GetGOInfo()->GetGossipMenuId(); }
         void UseDoorOrButton(uint32 time_to_restore = 0, bool alternative = false);
                                                             // 0 = use `gameobject`.`spawntimesecs`
         void ResetDoorOrButton();
