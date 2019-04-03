@@ -26,9 +26,12 @@ const char AreaTableEntryfmt[]="niiiixxxxxissssssssxixxxi";
 const char AreaTriggerEntryfmt[]="niffffffff";
 const char AuctionHouseEntryfmt[]="niiixxxxxxxxx";
 const char BankBagSlotPricesEntryfmt[]="ni";
+#if SUPPORTED_CLIENT_BUILD > CLIENT_BUILD_1_9_4
 const char ChrClassesEntryfmt[]="nxxixssssssssxxix";
+#else
+const char ChrClassesEntryfmt[] = "nxxixssssssssxxi";
+#endif
 const char ChrRacesEntryfmt[]="niixiixxixxxxxixissssssssxxxx";
-const char CharStartOutfitEntryfmt[]="diiiiiiiiiiiiixxxxxxxxxxxxxxxxxxxxxxxxxxx";
 const char ChatChannelsEntryfmt[]="nixssssssssxxxxxxxxxx";                 // ChatChannelsEntryfmt, index not used (more compact store)
 const char CinematicSequencesEntryfmt[]="nxxxxxxxxx";
 const char CreatureDisplayInfofmt[]="nixifxxxxxxx";
@@ -45,7 +48,11 @@ const char GameObjectDisplayInfofmt[]="nsxxxxxxxxxx";
 const char ItemBagFamilyfmt[]="nxxxxxxxxx";
 //const char ItemDisplayTemplateEntryfmt[]="nxxxxxxxxxxixxxxxxxxxxx";
 const char ItemRandomPropertiesfmt[]="nsiiixxssssssssx";
+#if SUPPORTED_CLIENT_BUILD > CLIENT_BUILD_1_10_2
 const char ItemSetEntryfmt[]="dssssssssxxxxxxxxxxxxxxxxxxiiiiiiiiiiiiiiiiii";
+#else
+const char ItemSetEntryfmt[] = "dssssssssxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxiiiiiiiiiiiiiiiiii";
+#endif
 const char LiquidTypefmt[]="niii";
 const char LockEntryfmt[]="niiiiiiiiiiiiiiiiiiiiiiiixxxxxxxx";
 const char MailTemplateEntryfmt[]="nxxxxxxxxx";
@@ -54,6 +61,7 @@ const char QuestSortEntryfmt[]="nxxxxxxxxx";
 const char SkillLinefmt[]="nixssssssssxxxxxxxxxxi";
 const char SkillLineAbilityfmt[]="niiiixxiiiiixxi";
 const char SkillRaceClassInfofmt[]="diiiiixx";
+const char SpellCategoryfmt[] = "ni";
 const char SpellCastTimefmt[]="nixx";
 const char SpellDurationfmt[]="niii";
 const char SpellFocusObjectfmt[]="nxxxxxxxxx";

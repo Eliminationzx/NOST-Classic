@@ -190,14 +190,12 @@ extern int main(int argc, char **argv)
         "MM   MM MM  MMM MM   MM  MMMMMM  MMMM   MMMMM\n"
         "        MM  MMM http://getmangos.com\n"
         "        MMMMMM\n\n");
-    sLog.outString("Light's Hope : https://lightshope.org/");
+    sLog.outString("vMaNGOS : https://github.com/vmangos");
     sLog.outString("Using configuration file %s.", cfg_file);
 
 #define STR(s) #s
 #define XSTR(s) STR(s)
 
-    //sLog.nostalrius("Starting worldserver CORE: %s SCRIPTS: %s " __DATE__ " " __TIME__ , XSTR(CORE_VERSION), XSTR(SCRIPT_VERSION));
-    sLog.outInfo("Build params : \"" MANGOS_BUILD_OPTIONS "\"");
     sLog.outInfo("Alloc library: " MANGOS_ALLOC_LIB "");
     sLog.outInfo("Core Revision: " _FULLVERSION);
 

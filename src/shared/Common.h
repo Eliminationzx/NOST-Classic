@@ -62,7 +62,8 @@
 #endif                                                      // __SHOW_STUPID_WARNINGS__
 #endif                                                      // __GNUC__
 
-#include "Utilities/UnorderedMapSet.h"
+#include "Platform/CompilerDefs.h"
+#include "Platform/Define.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -80,6 +81,7 @@
 #include <list>
 #include <string>
 #include <map>
+#include <unordered_map>
 #include <queue>
 #include <sstream>
 #include <algorithm>
@@ -163,11 +165,7 @@ inline float finiteAlways(float f) { return finite(f) ? f : 0.0f; }
 #define PAIR32_HIPART(x)   (uint16)((uint32(x) >> 16) & 0x0000FFFF)
 #define PAIR32_LOPART(x)   (uint16)(uint32(x)         & 0x0000FFFF)
 
-// Game client builds
-#define CLIENT_BUILD_1_11_2 5464
-#define CLIENT_BUILD_1_12_1 5875
-// Change this to define which version players can use
-#define SUPPORTED_CLIENT_BUILD CLIENT_BUILD_1_12_1
+#include "Progression.h"
 
 enum TimeConstants
 {
@@ -206,9 +204,10 @@ enum RealmFlags
     REALM_FLAG_FULL         = 0x80
 };
 
+// Index returned by GetSessionDbcLocale.
 enum LocaleConstant
 {
-    LOCALE_enUS = 0,                                        // also enGB
+    LOCALE_enUS = 0,   // also enGB
     LOCALE_koKR = 1,
     LOCALE_frFR = 2,
     LOCALE_deDE = 3,
@@ -216,13 +215,28 @@ enum LocaleConstant
     LOCALE_zhTW = 5,
     LOCALE_esES = 6,
     LOCALE_esMX = 7,
-    LOCALE_ruRU = 8
+    LOCALE_ruRU = 8    // not in vanilla                             
+};
+
+// Index returned by GetSessionDbLocaleIndex.
+enum DBLocaleConstant : int
+{
+    DB_LOCALE_enUS = -1,
+    DB_LOCALE_frFR = 0,
+    DB_LOCALE_deDE = 1,
+    DB_LOCALE_koKR = 2,
+    DB_LOCALE_zhCN = 3,
+    DB_LOCALE_zhTW = 4,
+    DB_LOCALE_esES = 5,
+    DB_LOCALE_esMX = 6,
+    DB_LOCALE_ruRU = 7
 };
 
 #define MAX_DBC_LOCALE 8
 #define MAX_LOCALE 9
 
 LocaleConstant GetLocaleByName(const std::string& name);
+LocaleConstant GetDbcLocaleFromDbLocale(DBLocaleConstant localeIndex);
 
 extern char const* localeNames[MAX_LOCALE];
 

@@ -599,6 +599,7 @@ class MANGOS_DLL_SPEC WorldSession
         void HandleLootReleaseOpcode(WorldPacket& recvPacket);
         void HandleLootMasterGiveOpcode(WorldPacket& recvPacket);
         void HandleWhoOpcode(WorldPacket& recvPacket);
+        void HandleLFGOpcode(WorldPacket& recvPacket);
         void HandleLogoutRequestOpcode(WorldPacket& recvPacket);
         void HandlePlayerLogoutOpcode(WorldPacket& recvPacket);
         void HandleLogoutCancelOpcode(WorldPacket& recvPacket);
@@ -881,7 +882,7 @@ class MANGOS_DLL_SPEC WorldSession
         static void HandleChangePlayerNameOpcodeCallBack(QueryResult *result, uint32 accountId, std::string newname);
 
         //BattleGround
-		void HandleBattlefieldJoinOpcode( WorldPacket &recv_data );
+        void HandleBattlefieldJoinOpcode( WorldPacket &recv_data );
         void HandleBattlemasterHelloOpcode(WorldPacket &recv_data);
         void HandleBattlemasterJoinOpcode(WorldPacket &recv_data);
         void HandleBattleGroundPlayerPositionsOpcode(WorldPacket& recv_data);

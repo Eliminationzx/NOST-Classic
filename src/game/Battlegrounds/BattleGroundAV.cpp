@@ -282,7 +282,7 @@ void BattleGroundAV::HandleKillUnit(Creature *creature, Player *killer)
         {
             // Stop landmines respawn
             uint8 eventIdx = creature->GetEntry() == NPC_LANDMINES_LAYER_A2 ? BG_AV_LANDMINES_ALLIANCE : BG_AV_LANDMINES_HORDE;
-            m_ActiveEvents[eventIdx] = 1; // Cf ScriptName "go_av_landmineAI"
+            m_ActiveEvents[eventIdx] = 1; // Cf script_name "go_av_landmineAI"
             return;
         }
         case NPC_LANDMINES_EXPERT_A2:
@@ -518,15 +518,15 @@ void BattleGroundAV::HandleQuestComplete(Unit* questGiver, uint32 questid, Playe
 //            setReinforcementLevelGroundUnit(teamIdx, m_Team_QuestStatus[teamIdx][0]);
 
             if((m_Team_QuestStatus[teamIdx][0]%100) == 0 && (m_Team_QuestStatus[teamIdx][0]%500) != 0&& questGiver->GetTypeId() == TYPEID_UNIT)
-            	((Creature*)questGiver)->MonsterSay("Great! Let's keep those supplies coming, people!", 0, 0);
+                ((Creature*)questGiver)->MonsterSay("Great! Let's keep those supplies coming, people!", 0, 0);
 
 /*            if(m_Team_QuestStatus[teamIdx][0]%500 == 0 && m_Team_QuestStatus[teamIdx][0] != 0 && questGiver->GetTypeId() == TYPEID_UNIT)
             {
-            	sprintf(sMessageRemaining,"Thanks for the supplies, %s",player->GetName());
-            	((Creature*)questGiver)->MonsterSay(sMessageRemaining, 0, 0);
+                sprintf(sMessageRemaining,"Thanks for the supplies, %s",player->GetName());
+                ((Creature*)questGiver)->MonsterSay(sMessageRemaining, 0, 0);
 
-            	if(m_Team_QuestStatus[teamIdx][0] == 500)            		
-            	{
+                if(m_Team_QuestStatus[teamIdx][0] == 500)                    
+                {
                     if (teamIdx == 0)
                         CastSpellOnTeam(28418, ALLIANCE);
                     else
@@ -534,27 +534,27 @@ void BattleGroundAV::HandleQuestComplete(Unit* questGiver, uint32 questid, Playe
 
                    sprintf(sMessageRemaining,"Seasoned units are entering the battle!");
                    ((Creature*)questGiver)->MonsterYell(sMessageRemaining, 0, 0);
-            	}
-            	else if(m_Team_QuestStatus[teamIdx][0] == 1000)            		
-            	{
+                }
+                else if(m_Team_QuestStatus[teamIdx][0] == 1000)                    
+                {
                     if (teamIdx == 0)
                         CastSpellOnTeam(28419, ALLIANCE);
                     else
                         CastSpellOnTeam(28419, HORDE);
 
-            		sprintf(sMessageRemaining,"Veteran units are entering the battle!");
-            		((Creature*)questGiver)->MonsterYell(sMessageRemaining, 0, 0);
-            	}
-            	else if(m_Team_QuestStatus[teamIdx][0] == 1500)            		
-            	{
+                    sprintf(sMessageRemaining,"Veteran units are entering the battle!");
+                    ((Creature*)questGiver)->MonsterYell(sMessageRemaining, 0, 0);
+                }
+                else if(m_Team_QuestStatus[teamIdx][0] == 1500)                    
+                {
                     if (teamIdx == 0)
                         CastSpellOnTeam(28420, ALLIANCE);
                     else
                         CastSpellOnTeam(28420, HORDE);
 
-            		sprintf(sMessageRemaining,"Champion units are entering the battle!");
-            		((Creature*)questGiver)->MonsterYell(sMessageRemaining, 0, 0);
-            	}
+                    sprintf(sMessageRemaining,"Champion units are entering the battle!");
+                    ((Creature*)questGiver)->MonsterYell(sMessageRemaining, 0, 0);
+                }
 
             }
 */
@@ -1428,7 +1428,7 @@ void BattleGroundAV::SendMineWorldStates(uint32 mine)
 WorldSafeLocsEntry const* BattleGroundAV::GetClosestGraveYard(Player *plr)
 {
     // repop players at the entrance GY if BG is not started yet
-    if (GetStatus() != STATUS_IN_PROGRESS && !plr->isGameMaster())
+    if (GetStatus() != STATUS_IN_PROGRESS && !plr->IsGameMaster())
     {
         if (WorldSafeLocsEntry const* gEntry = sWorldSafeLocsStore.LookupEntry(plr->GetTeam() == ALLIANCE ? 611 : 610))
             return gEntry;
@@ -1678,7 +1678,7 @@ void BattleGroundAV::HandleCommand(Player* player, ChatHandler* handler, char* a
     {
         int questId;
         in >> questId;
-        if (Creature* target = player->getSelectedCreature())
+        if (Creature* target = player->GetSelectedCreature())
         {
             HandleQuestComplete(target, questId, player);
             handler->PSendSysMessage("Quest #%u completed on target %s", questId, target->GetName());

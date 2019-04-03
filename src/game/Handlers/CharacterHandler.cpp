@@ -110,6 +110,7 @@ bool LoginQueryHolder::Initialize()
     res &= SetPQuery(PLAYER_LOGIN_QUERY_LOADSKILLS,          "SELECT skill, value, max FROM character_skills WHERE guid = '%u'", m_guid.GetCounter());
     res &= SetPQuery(PLAYER_LOGIN_QUERY_LOADMAILS,           "SELECT id,messageType,sender,receiver,subject,itemTextId,expire_time,deliver_time,money,cod,checked,stationery,mailTemplateId,has_items FROM mail WHERE receiver = '%u' ORDER BY id DESC", m_guid.GetCounter());
     res &= SetPQuery(PLAYER_LOGIN_QUERY_LOADMAILEDITEMS,     "SELECT creatorGuid, giftCreatorGuid, count, duration, charges, flags, enchantments, randomPropertyId, durability, text, mail_id, item_guid, itemEntry, generated_loot FROM mail_items JOIN item_instance ON item_guid = guid WHERE receiver = '%u'", m_guid.GetCounter());
+    res &= SetPQuery(PLAYER_LOGIN_QUERY_FORGOTTEN_SKILLS,    "SELECT skill, value FROM character_forgotten_skills WHERE guid = '%u'", m_guid.GetCounter());
 
     return res;
 }
@@ -238,7 +239,7 @@ void WorldSession::HandleCharCreateOpcode(WorldPacket & recv_data)
     ChrClassesEntry const* classEntry = sChrClassesStore.LookupEntry(class_);
     ChrRacesEntry const* raceEntry = sChrRacesStore.LookupEntry(race_);
 
-    if (!classEntry || !raceEntry || !sWorld.getConfig(CONFIG_BOOL_ENABLE_CHAR_CREATION))
+    if (!classEntry || !raceEntry)
     {
         data << (uint8)CHAR_CREATE_FAILED;
         SendPacket(&data);
@@ -327,7 +328,7 @@ void WorldSession::HandleCharCreateOpcode(WorldPacket & recv_data)
     }
 
     Player *pNewChar = new Player(this);
-    if (!pNewChar->Create(sObjectMgr.GeneratePlayerLowGuid(), name, race_, class_, gender, skin, face, hairStyle, hairColor, facialHair, outfitId))
+    if (!pNewChar->Create(sObjectMgr.GeneratePlayerLowGuid(), name, race_, class_, gender, skin, face, hairStyle, hairColor, facialHair))
     {
         // Player not create (race/class problem?)
         delete pNewChar;
@@ -341,7 +342,7 @@ void WorldSession::HandleCharCreateOpcode(WorldPacket & recv_data)
     MasterPlayer masterPlayer(this);
     masterPlayer.Create(pNewChar);
     if ((have_same_race && skipCinematics == CINEMATICS_SKIP_SAME_RACE) || skipCinematics == CINEMATICS_SKIP_ALL)
-        pNewChar->setCinematic(1);                          // not show intro
+        pNewChar->SetCinematic(1);                          // not show intro
 
     pNewChar->SetAtLoginFlag(AT_LOGIN_FIRST);               // First login
 
@@ -605,9 +606,9 @@ void WorldSession::HandlePlayerLogin(LoginQueryHolder *holder)
     GetMasterPlayer()->SendInitialActionButtons();
 
     //Show cinematic at the first time that player login
-    if (!pCurrChar->getCinematic())
+    if (!pCurrChar->GetCinematic())
     {
-        pCurrChar->setCinematic(1);
+        pCurrChar->SetCinematic(1);
 
         if (ChrRacesEntry const* rEntry = sChrRacesStore.LookupEntry(pCurrChar->getRace()))
             pCurrChar->SendCinematicStart(rEntry->CinematicSequence);
@@ -616,7 +617,7 @@ void WorldSession::HandlePlayerLogin(LoginQueryHolder *holder)
     if (!alreadyOnline && !pCurrChar->GetMap()->Add(pCurrChar))
     {
         // normal delayed teleport protection not applied (and this correct) for this case (Player object just created)
-        AreaTrigger const* at = sObjectMgr.GetGoBackTrigger(pCurrChar->GetMapId());
+        AreaTriggerTeleport const* at = sObjectMgr.GetGoBackTrigger(pCurrChar->GetMapId());
         if (at)
             pCurrChar->TeleportTo(at->target_mapId, at->target_X, at->target_Y, at->target_Z, pCurrChar->GetOrientation());
         else if (pCurrChar->GetMapId() == 533)
@@ -687,22 +688,22 @@ void WorldSession::HandlePlayerLogin(LoginQueryHolder *holder)
     }
 
     // Set FFA PvP for non GM in non-rest mode
-    if (sWorld.IsFFAPvPRealm() && !pCurrChar->isGameMaster() && !pCurrChar->HasFlag(PLAYER_FLAGS, PLAYER_FLAGS_RESTING))
+    if (sWorld.IsFFAPvPRealm() && !pCurrChar->IsGameMaster() && !pCurrChar->HasFlag(PLAYER_FLAGS, PLAYER_FLAGS_RESTING))
         pCurrChar->SetFFAPvP(true);
 
     if (pCurrChar->HasFlag(PLAYER_FLAGS, PLAYER_FLAGS_CONTESTED_PVP))
-        pCurrChar->SetContestedPvP();
+        pCurrChar->UpdatePvPContested(true);
 
     // Apply at_login requests
     if (pCurrChar->HasAtLoginFlag(AT_LOGIN_RESET_SPELLS))
     {
-        pCurrChar->resetSpells();
+        pCurrChar->ResetSpells();
         SendNotification(LANG_RESET_SPELLS);
     }
 
     if (pCurrChar->HasAtLoginFlag(AT_LOGIN_RESET_TALENTS))
     {
-        pCurrChar->resetTalents(true);
+        pCurrChar->ResetTalents(true);
         SendNotification(LANG_RESET_TALENTS);               // we can use SMSG_TALENTS_INVOLUNTARILY_RESET here
     }
 
@@ -716,10 +717,10 @@ void WorldSession::HandlePlayerLogin(LoginQueryHolder *holder)
     if (sWorld.getConfig(CONFIG_BOOL_ALL_TAXI_PATHS))
         pCurrChar->SetTaxiCheater(true);
 
-    if (pCurrChar->isGameMaster())
+    if (pCurrChar->IsGameMaster())
         SendNotification(LANG_GM_ON);
 
-    if (!pCurrChar->isGMVisible())
+    if (!pCurrChar->IsGMVisible())
         SendNotification(LANG_INVISIBLE_INVISIBLE, pCurrChar->GetGMInvisibilityLevel());
 
     std::string IP_str = GetRemoteAddress();
@@ -740,7 +741,7 @@ void WorldSession::HandlePlayerLogin(LoginQueryHolder *holder)
         if (pCurrChar->getDeathState() == CORPSE)
             pCurrChar->KillPlayer();
     }
-    pCurrChar->restorePendingTeleport();
+    pCurrChar->RestorePendingTeleport();
 
     sObjectMgr.UpdatePlayerCachedPosition(pCurrChar);
 

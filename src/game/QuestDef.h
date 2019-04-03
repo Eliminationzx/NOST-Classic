@@ -100,7 +100,7 @@ enum QuestStatus
     MAX_QUEST_STATUS
 };
 
-inline char* QuestStatusToString(QuestStatus status)
+inline char const* QuestStatusToString(QuestStatus status)
 {
     switch (status)
     {
@@ -250,6 +250,7 @@ class Quest
         std::string GetEndText() const { return EndText; }
         int32  GetRewOrReqMoney() const;
         uint32 GetRewMoneyMaxLevel() const { return RewMoneyMaxLevel; }
+        int32 GetRewMoneyMaxLevelAtComplete() const;
                                                             // use in XP calculation at client
         uint32 GetRewSpell() const { return RewSpell; }
         uint32 GetRewSpellCast() const { return RewSpellCast; }

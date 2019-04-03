@@ -529,7 +529,7 @@ bool AreaTrigger_at_temple_ahnqiraj(Player* pPlayer, const AreaTriggerEntry* pAt
 {
     if (pAt->id == AREATRIGGER_TWIN_EMPERORS || pAt->id == AREATRIGGER_SARTURA)
     {
-        if (pPlayer->isGameMaster() || !pPlayer->isAlive())
+        if (pPlayer->IsGameMaster() || !pPlayer->isAlive())
             return false;
 
         if (instance_temple_of_ahnqiraj* pInstance = (instance_temple_of_ahnqiraj*)pPlayer->GetInstanceData())
@@ -563,7 +563,7 @@ instance_temple_of_ahnqiraj::CThunStomachList::iterator instance_temple_of_ahnqi
 void instance_temple_of_ahnqiraj::TeleportPlayerToCThun(Player* pPlayer)
 {
     // Player is ported to center of c'thun with a small, random, offset to knock the player in a random direction.
-    const AreaTriggerEntry* cthunAreaTrigger = sAreaTriggerStore.LookupEntry(AREATRIGGER_CTHUN_KNOCKBACK);
+    const AreaTriggerEntry* cthunAreaTrigger = sObjectMgr.GetAreaTrigger(AREATRIGGER_CTHUN_KNOCKBACK);
     if (cthunAreaTrigger) {
         float x = cthunAreaTrigger->x + cos((frand(0.0f, 360.0f)) * (3.14f / 180.0f)) * 0.1f;
         float y = cthunAreaTrigger->y + sin((frand(0.0f, 360.0f)) * (3.14f / 180.0f)) * 0.1f;
@@ -580,7 +580,7 @@ void instance_temple_of_ahnqiraj::TeleportPlayerToCThun(Player* pPlayer)
 
 void instance_temple_of_ahnqiraj::PerformCthunKnockback()
 {
-    const AreaTriggerEntry* pAt = sAreaTriggerStore.LookupEntry(AREATRIGGER_CTHUN_KNOCKBACK);
+    const AreaTriggerEntry* pAt = sObjectMgr.GetAreaTrigger(AREATRIGGER_CTHUN_KNOCKBACK);
     float x, y, z;
     if (pAt) {
         x = pAt->x;
@@ -607,7 +607,7 @@ bool instance_temple_of_ahnqiraj::PlayerInStomach(Unit * unit)
 void instance_temple_of_ahnqiraj::HandleStomachTriggers(Player * pPlayer, const AreaTriggerEntry * pAt)
 {
     if (!pPlayer) return;
-    if (pPlayer->isGameMaster() || !pPlayer->isAlive())
+    if (pPlayer->IsGameMaster() || !pPlayer->isAlive())
         return;
 
     if (pAt->id == AREATRIGGER_STOMACH_GROUND) {
@@ -693,7 +693,7 @@ void instance_temple_of_ahnqiraj::UpdateStomachOfCthun(uint32 diff)
     // Update the players in the stomach
     if (playersInStomach.empty()) return;
 
-    const AreaTriggerEntry* pot = sAreaTriggerStore.LookupEntry(AREATRIGGER_STOMACH_AIR);
+    const AreaTriggerEntry* pot = sObjectMgr.GetAreaTrigger(AREATRIGGER_STOMACH_AIR);
     for (auto it = playersInStomach.begin(); it != playersInStomach.end();) {
         Player* player = GetMap()->GetPlayer(it->first);
         //Player has left instance or something and we remove him from the list. 

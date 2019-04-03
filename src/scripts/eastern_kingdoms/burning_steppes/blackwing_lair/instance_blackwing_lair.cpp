@@ -902,7 +902,7 @@ bool GOHello_go_orbe_domination(Player* pPlayer, GameObject* pGo)
             if (Creature* pCreature = pGo->GetMap()->GetCreature(pInstance->GetData64(DATA_RAZORGORE_GUID)))
             {
                 // Deja CM ?
-                if (pCreature->hasUnitState(UNIT_STAT_CONTROLLED))
+                if (pCreature->hasUnitState(UNIT_STAT_POSSESSED))
                     return true;
                 if (pCreature->isInCombat() && pInstance->GetData64(DATA_EGG) != DONE)
                 {
@@ -1002,7 +1002,7 @@ struct go_engin_suppressionAI: public GameObjectAI
         for (Map::PlayerList::const_iterator i = liste.begin(); i != liste.end(); ++i)
         {
             if (me->GetDistance(i->getSource()) <= 15.0f)
-                if (!i->getSource()->HasStealthAura() && i->getSource()->isAlive() && !i->getSource()->isGameMaster())
+                if (!i->getSource()->HasStealthAura() && i->getSource()->isAlive() && !i->getSource()->IsGameMaster())
                     i->getSource()->AddAura(SPELL_SUPPRESSION_AURA);
         }
     }
@@ -1047,12 +1047,12 @@ bool AreaTrigger_at_orb_of_command(Player* pPlayer, const AreaTriggerEntry* pAt)
 {
     if (pAt->id == AT_ORB_OF_COMMAND)
     {
-        if (pPlayer->isDead())
+        Corpse *pCorpse = pPlayer->GetCorpse();
+        if (pPlayer && pPlayer->isDead() && pPlayer->GetQuestRewardStatus(7761) && pCorpse && (pCorpse->GetMapId() == 469))
         {
             pPlayer->ResurrectPlayer(0.5f);
             pPlayer->SpawnCorpseBones();
-            if (pPlayer->GetQuestRewardStatus(7761))
-                pPlayer->TeleportTo(469, -7664.76f, -1100.87f, 399.679f, 0.561981f);
+            pPlayer->TeleportTo(469, -7664.76f, -1100.87f, 399.679f, 0.561981f);
         }
     }
 
@@ -1063,7 +1063,7 @@ bool AreaTrigger_at_enter_vael_room(Player *pPlayer, const AreaTriggerEntry* pAt
 {
     if (pAt->id == AT_ENTER_VAEL_ROOM)
     {
-        if (pPlayer->isGameMaster())
+        if (pPlayer->IsGameMaster())
             return false;
 
         if (ScriptedInstance* pInstance = (ScriptedInstance*)pPlayer->GetMap()->GetInstanceData())

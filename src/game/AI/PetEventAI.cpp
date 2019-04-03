@@ -95,14 +95,7 @@ void PetEventAI::AttackStart(Unit* pWho)
             }
             
             if (!pOwner->IsPvP())
-            {
-                if ((pWho->IsPlayer() && pWho->IsPvP() && !pOwner->IsInDuelWith(static_cast<Player*>(pWho))) || // PvP flagged players
-                    (pWho->IsCreature() && pWho->IsPvP()))                                           // PvP flagged creatures
-                {
-                    pOwner->UpdatePvP(true);
-                    pOwner->RemoveAurasWithInterruptFlags(AURA_INTERRUPT_FLAG_ENTER_PVP_COMBAT);
-                }
-            }
+                pOwner->TogglePlayerPvPFlagOnAttackVictim(pWho);
         }
 
         if (m_bCombatMovement)
@@ -193,7 +186,7 @@ void PetEventAI::UpdateAI(const uint32 uiDiff)
     if (bHasVictim)
     {
         if (!m_CreatureSpells.empty())
-            DoSpellTemplateCasts(uiDiff);
+            DoSpellsListCasts(uiDiff);
 
         DoMeleeAttackIfReady();
     }

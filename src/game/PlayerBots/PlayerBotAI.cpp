@@ -21,7 +21,11 @@ void PlayerBotAI::UpdateAI(const uint32 diff)
     {
         WorldPacket data(MSG_MOVE_TELEPORT_ACK, 10);
         data << me->GetObjectGuid();
+#if SUPPORTED_CLIENT_BUILD > CLIENT_BUILD_1_9_4
         data << uint32(0) << uint32(0);
+#else
+        data << uint32(0);
+#endif
         me->GetSession()->HandleMoveTeleportAckOpcode(data);
     }
     if (me->IsBeingTeleportedFar())
@@ -60,10 +64,9 @@ bool PlayerBotAI::SpawnNewPlayer(WorldSession* sess, uint8 class_, uint32 race_,
     uint8 hairStyle = urand(0, 5);
     uint8 hairColor = urand(0, 5);
     uint8 facialHair = urand(0, 5);
-    uint8 outfitId = urand(0, 10);
     Player *newChar = new Player(sess);
     uint32 guid = botEntry->playerGUID;
-    if (!newChar->Create(guid, name, race_, class_, gender, skin, face, hairStyle, hairColor, facialHair, outfitId))
+    if (!newChar->Create(guid, name, race_, class_, gender, skin, face, hairStyle, hairColor, facialHair))
     {
         sLog.outError("PlayerBotAI::SpawnNewPlayer: Unable to create a player!");
         delete newChar;
@@ -73,7 +76,7 @@ bool PlayerBotAI::SpawnNewPlayer(WorldSession* sess, uint8 class_, uint32 race_,
     newChar->SetLocationInstanceId(instanceId);
     newChar->SetAutoInstanceSwitch(false);
     newChar->GetMotionMaster()->Initialize();
-    newChar->setCinematic(1);
+    newChar->SetCinematic(1);
     // Set instance
     if (instanceId && mapId > 1) // Not a continent
     {

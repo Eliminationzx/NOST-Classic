@@ -187,8 +187,8 @@ void npc_escortAI::JustRespawned()
     //add a small delay before going to first waypoint.
     m_uiWPWaitTimer = m_uiDelayBeforeTheFirstWaypoint;
 
-    if (m_creature->getFaction() != m_creature->GetCreatureInfo()->faction_A)
-        m_creature->setFaction(m_creature->GetCreatureInfo()->faction_A);
+    if (m_creature->getFaction() != m_creature->GetCreatureInfo()->faction)
+        m_creature->setFaction(m_creature->GetCreatureInfo()->faction);
 
     Reset();
     ResetCreature();
@@ -205,7 +205,7 @@ void npc_escortAI::EnterEvadeMode()
         ResetCreature();
 
     // Reset back to default spells template. This also resets timers.
-    SetSpellsTemplate(m_creature->GetCreatureInfo()->spells_template);
+    SetSpellsList(m_creature->GetCreatureInfo()->spell_list_id);
 
     ReturnToCombatStartPosition();
     Reset();
@@ -347,7 +347,7 @@ void npc_escortAI::UpdateEscortAI(const uint32 uiDiff)
         return;
 
     if (!m_CreatureSpells.empty())
-        DoSpellTemplateCasts(uiDiff);
+        DoSpellsListCasts(uiDiff);
 
     DoMeleeAttackIfReady();
 }

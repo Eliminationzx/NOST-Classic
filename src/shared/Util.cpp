@@ -395,7 +395,7 @@ bool Utf8toWStr(const std::string& utf8str, std::wstring& wstr, size_t max_len)
             wstr.resize(max_len);
         }
     }
-    catch(std::exception)
+    catch (std::exception)
     {
         wstr = L"";
         return false;
@@ -409,7 +409,7 @@ bool WStrToUtf8(std::wstring& wstr, std::string& utf8str)
     try
     {
         std::string utf8str2;
-        utf8str2.resize(wstr.size()*4);                     // allocate for most long case
+        utf8str2.resize(wstr.size() * 4);                     // allocate for most long case
 
         auto end = utf8::utf16to8(wstr.cbegin(), wstr.cend(), utf8str2.begin());
         if (end != utf8str2.end())
@@ -417,7 +417,7 @@ bool WStrToUtf8(std::wstring& wstr, std::string& utf8str)
 
         utf8str = utf8str2;
     }
-    catch(std::exception)
+    catch (std::exception)
     {
         utf8str = "";
         return false;
@@ -432,11 +432,11 @@ bool utf8ToConsole(const std::string& utf8str, std::string& conStr)
 {
 #if PLATFORM == PLATFORM_WINDOWS
     std::wstring wstr;
-    if(!Utf8toWStr(utf8str,wstr))
+    if (!Utf8toWStr(utf8str, wstr))
         return false;
 
     conStr.resize(wstr.size());
-    CharToOemBuffW(&wstr[0],&conStr[0],wstr.size());
+    CharToOemBuffW(&wstr[0], &conStr[0], wstr.size());
 #else
     // not implemented yet
     conStr = utf8str;
@@ -445,14 +445,14 @@ bool utf8ToConsole(const std::string& utf8str, std::string& conStr)
     return true;
 }
 
-bool consoleToUtf8(const std::string& conStr,std::string& utf8str)
+bool consoleToUtf8(const std::string& conStr, std::string& utf8str)
 {
 #if PLATFORM == PLATFORM_WINDOWS
     std::wstring wstr;
     wstr.resize(conStr.size());
-    OemToCharBuffW(&conStr[0],&wstr[0],conStr.size());
+    OemToCharBuffW(&conStr[0], &wstr[0], conStr.size());
 
-    return WStrToUtf8(wstr,utf8str);
+    return WStrToUtf8(wstr, utf8str);
 #else
     // not implemented yet
     utf8str = conStr;
@@ -464,13 +464,13 @@ bool Utf8FitTo(const std::string& str, std::wstring search)
 {
     std::wstring temp;
 
-    if(!Utf8toWStr(str,temp))
+    if (!Utf8toWStr(str, temp))
         return false;
 
     // converting to lower case
-    wstrToLower( temp );
+    wstrToLower(temp);
 
-    if(temp.find(search) == std::wstring::npos)
+    if (temp.find(search) == std::wstring::npos)
         return false;
 
     return true;
@@ -491,7 +491,7 @@ void vutf8printf(FILE *out, const char *str, va_list* ap)
     temp_buf.resize(32 * 1024);
     std::wstring wtemp_buf;
 
-    size_t temp_len = vsnprintf(&temp_buf[0], 32*1024, str, *ap);
+    size_t temp_len = vsnprintf(&temp_buf[0], 32 * 1024, str, *ap);
     temp_buf.resize(strlen(temp_buf.c_str())); // Resize to match the formatted string
 
     if (!temp_buf.empty())
@@ -510,16 +510,16 @@ void vutf8printf(FILE *out, const char *str, va_list* ap)
 void hexEncodeByteArray(uint8* bytes, uint32 arrayLen, std::string& result)
 {
     std::ostringstream ss;
-    for(uint32 i=0; i<arrayLen; ++i)
+    for (uint32 i = 0; i<arrayLen; ++i)
     {
-        for(uint8 j=0; j<2; ++j)
+        for (uint8 j = 0; j<2; ++j)
         {
-            unsigned char nibble = 0x0F & (bytes[i]>>((1-j)*4));
+            unsigned char nibble = 0x0F & (bytes[i] >> ((1 - j) * 4));
             char encodedNibble;
-            if(nibble < 0x0A)
-                encodedNibble = '0'+nibble;
+            if (nibble < 0x0A)
+                encodedNibble = '0' + nibble;
             else
-                encodedNibble = 'A'+nibble-0x0A;
+                encodedNibble = 'A' + nibble - 0x0A;
             ss << encodedNibble;
         }
     }

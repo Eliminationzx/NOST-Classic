@@ -28,6 +28,9 @@ struct boss_king_gordokAI : public ScriptedAI
     uint32 m_uiSunderArmor_Timer;
     uint32 m_uiPhase;
     
+    // World of Warcraft Client Patch 1.9.3 (2006-02-07)
+    // - King Gordok can no longer be seperated from Cho'Rush the Observer in Dire Maul.
+    bool const m_bLinkCheckEnabled = sWorld.GetWowPatch() >= WOW_PATCH_109;
     uint32 m_uiLinkCheckTimer;
     
     
@@ -102,19 +105,21 @@ struct boss_king_gordokAI : public ScriptedAI
 
         DoMeleeAttackIfReady();
         
-        // Prevent splitting King from the Observer
-        if (m_uiLinkCheckTimer < uiDiff)
+        if (m_bLinkCheckEnabled)
         {
-            if (Creature* pChorush = m_creature->GetMap()->GetCreature(pInstance->GetData64(NPC_CHORUSH)))
+            // Prevent splitting King from the Observer
+            if (m_uiLinkCheckTimer < uiDiff)
             {
-                if (pChorush->isAlive() && !pChorush->isInCombat())
-                    pChorush->AI()->AttackStart(m_creature->getVictim());
+                if (Creature* pChorush = m_creature->GetMap()->GetCreature(pInstance->GetData64(NPC_CHORUSH)))
+                {
+                    if (pChorush->isAlive() && !pChorush->isInCombat())
+                        pChorush->AI()->AttackStart(m_creature->getVictim());
+                }
+                m_uiLinkCheckTimer = 2500;
             }
-            m_uiLinkCheckTimer = 2500;
+            else
+                m_uiLinkCheckTimer -= uiDiff;
         }
-        else
-            m_uiLinkCheckTimer -= uiDiff;
-            
     }
 };
 
@@ -137,7 +142,7 @@ enum
     SPELL_HEALING_WAVE      = 15982, // // m_uiSpellTimers[3]
     SPELL_LIGHTNING_BOLT    = 15234, // m_uiSpellTimers[0]
 
-    // Prist
+    // Priest
     SPELL_MIND_BLAST        = 17194, // m_uiSpellTimers[0]
     SPELL_HEAL              = 22883, // m_uiSpellTimers[3]
     SPELL_POWER_WORD_SHIELD = 17139, // m_uiSpellTimers[1]
@@ -172,6 +177,9 @@ struct boss_chorushAI : public ScriptedAI
     uint32 m_uiSpellTimers[MAX_SPELLS];
     bool m_bInMeele;
     
+    // World of Warcraft Client Patch 1.9.3 (2006-02-07)
+    // - King Gordok can no longer be seperated from Cho'Rush the Observer in Dire Maul.
+    bool const m_bLinkCheckEnabled = sWorld.GetWowPatch() >= WOW_PATCH_109;
     uint32 m_uiLinkCheckTimer;
 
     void EnterCombat(Unit* pWho)
@@ -228,18 +236,21 @@ struct boss_chorushAI : public ScriptedAI
 
         DoMeleeAttackIfReady();
         
-        // Prevent splitting Observer from the King
-        if (m_uiLinkCheckTimer < uiDiff)
+        if (m_bLinkCheckEnabled)
         {
-            if (Creature* pKing = m_creature->GetMap()->GetCreature(pInstance->GetData64(NPC_KING_GORDOK)))
+            // Prevent splitting Observer from the King
+            if (m_uiLinkCheckTimer < uiDiff)
             {
-                if (!pKing->isInCombat())
-                    pKing->AI()->AttackStart(m_creature->getVictim());
+                if (Creature* pKing = m_creature->GetMap()->GetCreature(pInstance->GetData64(NPC_KING_GORDOK)))
+                {
+                    if (!pKing->isInCombat())
+                        pKing->AI()->AttackStart(m_creature->getVictim());
+                }
+                m_uiLinkCheckTimer = 2500;
             }
-            m_uiLinkCheckTimer = 2500;
+            else
+                m_uiLinkCheckTimer -= uiDiff;
         }
-        else
-            m_uiLinkCheckTimer -= uiDiff;
     }
 };
 
@@ -283,8 +294,8 @@ void boss_chorushAI::UpdateAIMage(const uint32 uiDiff)
             if (Unit* attacker = m_creature->GetMap()->GetUnit((*itr)->GetGUID()))
                 if (m_creature->IsInRange(attacker, 0.0f, 8.0f, false)) 
                 {
-                     m_bMeleeAttackers = true;
-                     break;
+                    m_bMeleeAttackers = true;
+                    break;
                 }
         if (m_bMeleeAttackers)
             if (DoCastSpellIfCan(m_creature, SPELL_ARCANE_EXPLOSION) == CAST_OK)
@@ -303,8 +314,8 @@ void boss_chorushAI::UpdateAIMage(const uint32 uiDiff)
             if (Unit* attacker = m_creature->GetMap()->GetUnit((*itr)->GetGUID()))
                 if (m_creature->IsInRange(attacker, 0.0f, 8.0f, false)) 
                 {
-                     m_bMeleeAttackers = true;
-                     break;
+                    m_bMeleeAttackers = true;
+                    break;
                 }
         if (m_bMeleeAttackers)
             if (DoCastSpellIfCan(m_creature, SPELL_FROST_NOVA) == CAST_OK)
@@ -349,8 +360,8 @@ void boss_chorushAI::UpdateAIShaman(const uint32 uiDiff)
             if (Unit* attacker = m_creature->GetMap()->GetUnit((*itr)->GetGUID()))
                 if (m_creature->IsInRange(attacker, 0.0f, 6.0f, false)) 
                 {
-                     m_bMeleeAttackers = true;
-                     break;
+                    m_bMeleeAttackers = true;
+                    break;
                 }
         if (m_bMeleeAttackers)
             if (DoCastSpellIfCan(m_creature, SPELL_EARTHGRAB_TOTEM) == CAST_OK)
@@ -364,7 +375,7 @@ void boss_chorushAI::UpdateAIShaman(const uint32 uiDiff)
     {
         Unit* pTarget = NULL;
         if (pTarget = m_creature->DoSelectLowestHpFriendly(40.0f, 15000));
-        else if  (m_creature->GetHealthPercent() < 50.0f)
+        else if (m_creature->GetHealthPercent() < 50.0f)
             pTarget = m_creature;
 
         if (pTarget)
@@ -424,7 +435,7 @@ void boss_chorushAI::UpdateAIPrist(const uint32 uiDiff)
     {
         Unit* pTarget = NULL;
         if (pTarget = m_creature->DoSelectLowestHpFriendly(40.0f, 15000));
-        else if  (m_creature->GetHealthPercent() < 50.0f)
+        else if (m_creature->GetHealthPercent() < 50.0f)
             pTarget = m_creature;
 
         if (pTarget)
@@ -464,8 +475,8 @@ void boss_chorushAI::UpdateAIPrist(const uint32 uiDiff)
             if (Unit* attacker = m_creature->GetMap()->GetUnit((*itr)->GetGUID()))
                 if (m_creature->IsInRange(attacker, 0.0f, 8.0f, false)) 
                 {
-                     m_bMeleeAttackers = true;
-                     break;
+                    m_bMeleeAttackers = true;
+                    break;
                 }
         if (m_bMeleeAttackers)
             if (DoCastSpellIfCan(m_creature, SPELL_PSYCHIC_SCREAM) == CAST_OK)

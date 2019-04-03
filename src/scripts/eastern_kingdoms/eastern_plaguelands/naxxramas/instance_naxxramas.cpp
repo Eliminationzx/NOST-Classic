@@ -1168,7 +1168,7 @@ Creature* instance_naxxramas::GetClosestAnchorForGoth(Creature* pSource, bool bR
 
 void instance_naxxramas::GetGothSummonPointCreatures(std::list<Creature*> &lList, bool bRightSide)
 {
-    for (UNORDERED_MAP<uint64, GothTrigger>::iterator itr = m_mGothTriggerMap.begin(); itr != m_mGothTriggerMap.end(); ++itr)
+    for (std::unordered_map<uint64, GothTrigger>::iterator itr = m_mGothTriggerMap.begin(); itr != m_mGothTriggerMap.end(); ++itr)
     {
         if (itr->second.bIsAnchorHigh)
             continue;
@@ -1426,7 +1426,7 @@ void instance_naxxramas::onNaxxramasAreaTrigger(Player* pPlayer, const AreaTrigg
 
 bool AreaTrigger_at_naxxramas(Player* pPlayer, const AreaTriggerEntry* pAt)
 {
-    if (pPlayer->isGameMaster() || !pPlayer->isAlive())
+    if (pPlayer->IsGameMaster() || !pPlayer->isAlive())
         return false;
 
     if (instance_naxxramas* pInstance = (instance_naxxramas*)pPlayer->GetInstanceData())

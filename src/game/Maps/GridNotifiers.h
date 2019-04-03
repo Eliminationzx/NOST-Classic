@@ -25,6 +25,7 @@
 #include "ObjectGridLoader.h"
 #include "UpdateData.h"
 #include <iostream>
+#include <memory>
 
 #include "Corpse.h"
 #include "Object.h"
@@ -33,6 +34,7 @@
 #include "Player.h"
 #include "Unit.h"
 #include "CreatureAI.h"
+#include "Conditions.h"
 
 class Player;
 //class Map;
@@ -63,10 +65,10 @@ namespace MaNGOS
 
     struct MANGOS_DLL_DECL MessageDeliverer
     {
-        Player &i_player;
+        Player const& i_player;
         WorldPacket *i_message;
         bool i_toSelf;
-        MessageDeliverer(Player &pl, WorldPacket *msg, bool to_self) : i_player(pl), i_message(msg), i_toSelf(to_self) {}
+        MessageDeliverer(Player const& pl, WorldPacket *msg, bool to_self) : i_player(pl), i_message(msg), i_toSelf(to_self) {}
         void Visit(CameraMapType &m);
         template<class SKIP> void Visit(GridRefManager<SKIP> &) {}
     };
@@ -93,13 +95,13 @@ namespace MaNGOS
 
     struct MANGOS_DLL_DECL MessageDistDeliverer
     {
-        Player &i_player;
+        Player const& i_player;
         WorldPacket *i_message;
         bool i_toSelf;
         bool i_ownTeamOnly;
         float i_dist;
 
-        MessageDistDeliverer(Player &pl, WorldPacket *msg, float dist, bool to_self, bool ownTeamOnly)
+        MessageDistDeliverer(Player const& pl, WorldPacket *msg, float dist, bool to_self, bool ownTeamOnly)
             : i_player(pl), i_message(msg), i_toSelf(to_self), i_ownTeamOnly(ownTeamOnly), i_dist(dist) {}
         void Visit(CameraMapType &m);
         template<class SKIP> void Visit(GridRefManager<SKIP> &) {}
@@ -107,10 +109,10 @@ namespace MaNGOS
 
     struct MANGOS_DLL_DECL ObjectMessageDistDeliverer
     {
-        WorldObject &i_object;
+        WorldObject const& i_object;
         WorldPacket *i_message;
         float i_dist;
-        ObjectMessageDistDeliverer(WorldObject &obj, WorldPacket *msg, float dist) : i_object(obj), i_message(msg), i_dist(dist) {}
+        ObjectMessageDistDeliverer(WorldObject const& obj, WorldPacket *msg, float dist) : i_object(obj), i_message(msg), i_dist(dist) {}
         void Visit(CameraMapType &m);
         template<class SKIP> void Visit(GridRefManager<SKIP> &) {}
     };
@@ -638,6 +640,34 @@ namespace MaNGOS
             NearestGameObjectEntryInObjectRangeCheck(NearestGameObjectEntryInObjectRangeCheck const&);
     };
 
+    class NearestGameObjectEntryFitConditionInObjectRangeCheck
+    {
+        public:
+            NearestGameObjectEntryFitConditionInObjectRangeCheck(WorldObject const& obj,uint32 entry, float range, uint32 conditionId) : i_obj(obj), i_entry(entry), i_range(range), i_conditionId(conditionId) {}
+            WorldObject const& GetFocusObject() const { return i_obj; }
+            bool operator()(GameObject* go)
+            {
+                if(go->GetEntry() == i_entry && i_obj.IsWithinDistInMap(go, i_range))
+                {
+                    if (i_conditionId && !IsConditionSatisfied(i_conditionId, go, go->GetMap(), &i_obj, CONDITION_FROM_SPELL_AREA))
+                        return false;
+
+                    i_range = i_obj.GetDistance(go);        // use found GO range as new range limit for next check
+                    return true;
+                }
+                return false;
+            }
+            float GetLastRange() const { return i_range; }
+        private:
+            WorldObject const& i_obj;
+            uint32 i_entry;
+            float  i_range;
+            uint32 i_conditionId;
+
+            // prevent clone this object
+            NearestGameObjectEntryFitConditionInObjectRangeCheck(NearestGameObjectEntryFitConditionInObjectRangeCheck const&);
+    };
+
     // Success at gameobject in range of xyz, range update for next check (this can be use with GameobjectLastSearcher to find nearest GO)
     class NearestGameObjectEntryInPosRangeCheck
     {
@@ -873,7 +903,6 @@ namespace MaNGOS
                 : i_obj(obj), i_originalCaster(originalCaster), i_range(range)
             {
                 i_targetForUnit = i_originalCaster->isType(TYPEMASK_UNIT);
-                i_targetForPlayer = (i_originalCaster->GetTypeId() == TYPEID_PLAYER);
             }
             WorldObject const& GetFocusObject() const { return *i_obj; }
             bool operator()(Unit* u)
@@ -906,43 +935,43 @@ namespace MaNGOS
             WorldObject const* i_originalCaster;
             float i_range;
             bool i_targetForUnit;
-            bool i_targetForPlayer;
     };
 
     class AnyAoETargetUnitInObjectRangeCheck
     {
         public:
-            AnyAoETargetUnitInObjectRangeCheck(WorldObject const* obj, float range)
-                : i_obj(obj), i_range(range)
+            AnyAoETargetUnitInObjectRangeCheck(WorldObject const* obj, WorldObject const* originalCaster, float range)
+                : i_obj(obj), i_originalCaster(originalCaster), i_range(range)
             {
-                i_targetForPlayer = i_obj->IsControlledByPlayer();
+                i_targetForUnit = i_originalCaster->isType(TYPEMASK_UNIT);
             }
             WorldObject const& GetFocusObject() const { return *i_obj; }
             bool operator()(Unit* u)
             {
                 // Check contains checks for: live, non-selectable, non-attackable flags, flight check and GM check, ignore totems
-                if (!u->isTargetableForAttack(false, i_obj->IsPlayer()))
+                if (!u->isTargetableForAttack(false, i_originalCaster->IsPlayer()))
                     return false;
 
-                if(u->GetTypeId()==TYPEID_UNIT && ((Creature*)u)->IsImmuneToAoe())
+                // ignore totems as AoE targets
+                if (u->GetTypeId() == TYPEID_UNIT && ((Creature*)u)->IsImmuneToAoe())
                     return false;
 
-                if(!u->CanSeeInWorld(i_obj))
+                if (!u->CanSeeInWorld(i_obj))
                     return false;
 
                 if (!i_obj->IsWithinDistInMap(u, i_range))
                     return false;
 
-                if (i_obj->ToUnit())
-                    return i_obj->ToUnit()->IsValidAttackTarget(u);
+                if (i_targetForUnit)
+                    return i_originalCaster->ToUnit()->IsValidAttackTarget(u);
                 else // GameObject / Corpse case
-                    return i_obj->IsHostileTo(u);
+                    return i_originalCaster->IsHostileTo(u);
             }
-
         private:
             WorldObject const* i_obj;
+            WorldObject const* i_originalCaster;
             float i_range;
-            bool i_targetForPlayer;
+            bool i_targetForUnit;
     };
 
     // do attack at call of help to friendly crearture
@@ -1083,6 +1112,47 @@ namespace MaNGOS
             NearestAssistCreatureInCreatureRangeCheck(NearestAssistCreatureInCreatureRangeCheck const&);
     };
 
+    class NearestFriendlyGuardInRangeCheck
+    {
+    public:
+        NearestFriendlyGuardInRangeCheck(Creature const* obj, float range)
+            : i_obj(obj), i_range(range) {}
+        WorldObject const& GetFocusObject() const { return *i_obj; }
+        bool operator()(Creature const* u)
+        {
+            if (u == i_obj)
+                return false;
+
+            if (!u->isAlive())
+                return false;
+
+            if (u->isInCombat())
+                return false;
+
+            if (!u->IsGuard())
+                return false;
+
+            if (!u->IsFriendlyTo(i_obj))
+                return false;
+
+            if (!i_obj->IsWithinDistInMap(u, i_range))
+                return false;
+
+            if (!i_obj->IsWithinLOSInMap(u))
+                return false;
+
+            i_range = i_obj->GetDistance(u);            // use found unit range as new range limit for next check
+            return true;
+        }
+        float GetLastRange() const { return i_range; }
+    private:
+        Creature const* const i_obj;
+        float  i_range;
+
+        // prevent clone this object
+        NearestFriendlyGuardInRangeCheck(NearestFriendlyGuardInRangeCheck const&);
+    };
+
     // Success at unit in range, range update for next check (this can be use with CreatureLastSearcher to find nearest creature)
     class NearestCreatureEntryWithLiveStateInObjectRangeCheck
     {
@@ -1108,6 +1178,36 @@ namespace MaNGOS
 
             // prevent clone this object
             NearestCreatureEntryWithLiveStateInObjectRangeCheck(NearestCreatureEntryWithLiveStateInObjectRangeCheck const&);
+    };
+
+    class NearestCreatureEntryFitConditionInObjectRangeCheck
+    {
+        public:
+            NearestCreatureEntryFitConditionInObjectRangeCheck(WorldObject const& obj,uint32 entry, bool alive, float range, uint32 conditionId)
+                : i_obj(obj), i_entry(entry), i_alive(alive), i_range(range), i_conditionId(conditionId) {}
+            WorldObject const& GetFocusObject() const { return i_obj; }
+            bool operator()(Creature* u)
+            {
+                if (u->GetEntry() == i_entry && ((i_alive && u->isAlive()) || (!i_alive && u->IsCorpse())) && i_obj.IsWithinCombatDistInMap(u, i_range))
+                {
+                    if (i_conditionId && !IsConditionSatisfied(i_conditionId, u, u->GetMap(), &i_obj, CONDITION_FROM_SPELL_AREA))
+                        return false;
+
+                    i_range = i_obj.GetDistance(u);         // use found unit range as new range limit for next check
+                    return true;
+                }
+                return false;
+            }
+            float GetLastRange() const { return i_range; }
+        private:
+            WorldObject const& i_obj;
+            uint32 i_entry;
+            bool   i_alive;
+            float  i_range;
+            uint32 i_conditionId;
+
+            // prevent clone this object
+            NearestCreatureEntryFitConditionInObjectRangeCheck(NearestCreatureEntryFitConditionInObjectRangeCheck const&);
     };
 
     // Player checks and do
@@ -1155,16 +1255,11 @@ namespace MaNGOS
         public:
             explicit LocalizedPacketDo(Builder& builder) : i_builder(builder) {}
 
-            ~LocalizedPacketDo()
-            {
-                for(size_t i = 0; i < i_data_cache.size(); ++i)
-                    delete i_data_cache[i];
-            }
             void operator()( Player* p );
 
         private:
             Builder& i_builder;
-            std::vector<WorldPacket*> i_data_cache;         // 0 = default, i => i-1 locale index
+            std::vector<std::unique_ptr<WorldPacket>> i_data_cache;         // 0 = default, i => i-1 locale index
     };
 
     // Prepare using Builder localized packets with caching and send to player
@@ -1269,7 +1364,7 @@ namespace MaNGOS
             bool operator() (Player* pPlayer)
             {
                 //No threat list check, must be done explicit if expected to be in combat with creature
-                if (!pPlayer->isGameMaster() && pPlayer->isAlive() && !pUnit->IsWithinDist(pPlayer,fRange,false))
+                if (!pPlayer->IsGameMaster() && pPlayer->isAlive() && !pUnit->IsWithinDist(pPlayer,fRange,false))
                     return true;
 
                 return false;

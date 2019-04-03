@@ -303,7 +303,7 @@ void WorldSession::HandleItemQuerySingleOpcode(WorldPacket & recv_data)
     DETAIL_LOG("STORAGE: Item Query = %u", item);
 
     ItemPrototype const *pProto = ObjectMgr::GetItemPrototype(item);
-    if (pProto)
+    if (pProto && (pProto->m_bDiscovered || (GetSecurity() > SEC_PLAYER)))
     {
         std::string Name        = pProto->Name1;
         std::string Description = pProto->Description;
@@ -378,7 +378,9 @@ void WorldSession::HandleItemQuerySingleOpcode(WorldPacket & recv_data)
 
         data << pProto->Delay;
         data << pProto->AmmoType;
+#if SUPPORTED_CLIENT_BUILD > CLIENT_BUILD_1_9_4
         data << (float)pProto->RangedModRange;
+#endif
 
         for (int s = 0; s < MAX_ITEM_PROTO_SPELLS; ++s)
         {
@@ -391,7 +393,7 @@ void WorldSession::HandleItemQuerySingleOpcode(WorldPacket & recv_data)
 
                 data << pProto->Spells[s].SpellId;
                 data << pProto->Spells[s].SpellTrigger;
-				
+
                 // let the database control the sign here.  negative means that the item should be consumed once the charges are consumed.
                 data << pProto->Spells[s].SpellCharges;
 
@@ -800,7 +802,7 @@ void WorldSession::SendListInventory(ObjectGuid vendorguid, uint8 menu_type)
         {
             if (ItemPrototype const *pProto = ObjectMgr::GetItemPrototype(crItem->item))
             {
-                if (!_player->isGameMaster())
+                if (!_player->IsGameMaster())
                 {
                     // class wrong item skip only for bindable case
                     if ((pProto->AllowableClass & _player->getClassMask()) == 0 && pProto->Bonding == BIND_WHEN_PICKED_UP)

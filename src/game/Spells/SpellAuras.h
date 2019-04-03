@@ -26,11 +26,44 @@
 #include "DBCEnums.h"
 #include "ObjectGuid.h"
 
+/**
+ * Used to modify what an Aura does to a player/npc.
+ * Accessible through Aura::m_modifier.
+ * \see CreateAura
+ * \see Aura
+ * \see AreaAura
+ * \see AuraType
+ */
 struct Modifier
 {
+    /**
+     * Decides what the aura does, ie, it may have the
+     * value AuraType::SPELL_AURA_MOD_BASE_RESISTANCE_PCT which
+     * would change the base armor of a player.
+     */
     AuraType m_auraname;
+    /**
+     * By how much the aura should change the affected
+     * value. Ie, -27 would make the value decided by Modifier::m_miscvalue
+     * be reduced by 27% if the earlier mentioned AuraType
+     * would have been used. And 27 would increase the value by 27%
+     */
     int32 m_amount;
+    /**
+     * A miscvalue that is dependent on what the aura will do, this
+     * is usually decided by the AuraType, ie:
+     * with AuraType::SPELL_AURA_MOD_BASE_RESISTANCE_PCT this value
+     * could be SpellSchoolMask::SPELL_SCHOOL_MASK_NORMAL which would
+     * tell the aura that it should change armor.
+     * If Modifier::m_auraname would have been AuraType::SPELL_AURA_MOUNTED
+     * then m_miscvalue would have decided which model the mount should have
+     */
     int32 m_miscvalue;
+    /**
+     * Decides how often the aura should be applied, if it is
+     * set to 0 it's only applied once and then removed when
+     * the Aura is removed
+     */
     uint32 periodictime;
 };
 
@@ -359,7 +392,7 @@ class MANGOS_DLL_SPEC Aura
         void HandleModPercentStat(bool Apply, bool Real);
         void HandleAurasVisible(bool Apply, bool Real);
         void HandleModResistancePercent(bool Apply, bool Real);
-        void HandleAuraModBaseResistancePCT(bool Apply, bool Real);
+        void HandleAuraModBaseResistancePercent(bool Apply, bool Real);
         void HandleModShieldBlockPCT(bool Apply, bool Real);
         void HandleAuraTrackStealthed(bool Apply, bool Real);
         void HandleModShieldBlock(bool Apply, bool Real);
@@ -503,6 +536,7 @@ class MANGOS_DLL_SPEC Aura
         void PeriodicTick(SpellEntry const* sProto = nullptr, AuraType auraType = SPELL_AURA_NONE, uint32 data = 0);
         void PeriodicDummyTick();
 
+        uint32 CalculateDotDamage() const;
         void ReapplyAffectedPassiveAuras();
 
         Modifier m_modifier;

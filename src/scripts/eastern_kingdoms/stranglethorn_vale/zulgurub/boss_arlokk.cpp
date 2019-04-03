@@ -69,7 +69,7 @@ enum
 
 /*
 [SQL]
-INSERT INTO creature_template SET entry=14968, modelid_1=15013, modelid_2=15013, name="High Priestess Arlokk Transform Visual", faction_A=35, faction_H=35;
+INSERT INTO creature_template SET entry=14968, modelid_1=15013, modelid_2=15013, name="High Priestess Arlokk Transform Visual", faction=35
 */
 
 struct boss_arlokkAI : public ScriptedAI
@@ -157,7 +157,7 @@ struct boss_arlokkAI : public ScriptedAI
         DoScriptText(SAY_DEATH, m_creature);
 
         m_creature->RemoveAurasDueToSpell(SPELL_PANTHER_TRANSFORM);
-        m_creature->LeaveVanish();
+        LeaveVanish();
         m_creature->SetFloatValue(OBJECT_FIELD_SCALE_X, 1.0f);
 
         if (m_pInstance)
@@ -314,7 +314,7 @@ struct boss_arlokkAI : public ScriptedAI
         {
             //Invisble Model
             m_creature->RemoveAurasDueToSpell(SPELL_PANTHER_TRANSFORM);
-            m_creature->EnterVanish();
+            EnterVanish();
 
             m_bIsVanished = true;
 
@@ -334,14 +334,14 @@ struct boss_arlokkAI : public ScriptedAI
                 m_creature->CastSpell(m_creature, SPELL_PANTHER_TRANSFORM, false);
                 m_creature->SetFloatValue(OBJECT_FIELD_SCALE_X, 1.7f);
                 const CreatureInfo *cinfo = m_creature->GetCreatureInfo();
-                m_creature->SetBaseWeaponDamage(BASE_ATTACK, MINDAMAGE, (cinfo->mindmg + ((cinfo->mindmg / 100) * 35)));
-                m_creature->SetBaseWeaponDamage(BASE_ATTACK, MAXDAMAGE, (cinfo->maxdmg + ((cinfo->maxdmg / 100) * 35)));
+                m_creature->SetBaseWeaponDamage(BASE_ATTACK, MINDAMAGE, (cinfo->dmg_min + ((cinfo->dmg_min / 100) * 35)));
+                m_creature->SetBaseWeaponDamage(BASE_ATTACK, MAXDAMAGE, (cinfo->dmg_max + ((cinfo->dmg_max / 100) * 35)));
                 m_creature->UpdateDamagePhysical(BASE_ATTACK);
 
                 // Et embush
                 Unit* pVanishTarget = m_creature->SelectAttackingTarget(ATTACKING_TARGET_RANDOM, 0);
-                m_creature->LeaveVanish();
-                m_creature->Ambush(pVanishTarget, SPELL_BACKSTAB);
+                LeaveVanish();
+                Ambush(pVanishTarget, SPELL_BACKSTAB);
 
                 m_bIsPhaseTwo = true;
                 m_bIsVanished = false;
